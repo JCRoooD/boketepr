@@ -1,8 +1,15 @@
 import Link from "next/link";
 
+import { signOut } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
 
-export function TopNav() {
+export async function TopNav() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
@@ -36,13 +43,27 @@ export function TopNav() {
         </Link>
 
         <div className="flex items-center gap-2">
-          {/* Auth links will be wired in Goal 2 — placeholders for now */}
-          <Button variant="ghost" size="sm" render={<Link href="/login" />}>
-            Iniciar sesión
-          </Button>
-          <Button size="sm" render={<Link href="/signup" />}>
-            Crear cuenta
-          </Button>
+          {user ? (
+            <>
+              <Button variant="ghost" size="sm" render={<Link href="/profile" />}>
+                Mi perfil
+              </Button>
+              <form action={signOut}>
+                <Button type="submit" variant="outline" size="sm">
+                  Cerrar sesión
+                </Button>
+              </form>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" size="sm" render={<Link href="/login" />}>
+                Iniciar sesión
+              </Button>
+              <Button size="sm" render={<Link href="/signup" />}>
+                Crear cuenta
+              </Button>
+            </>
+          )}
         </div>
       </nav>
     </header>
