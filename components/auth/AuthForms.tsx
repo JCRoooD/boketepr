@@ -27,6 +27,16 @@ function SubmitButton({ children, pendingLabel }: { children: React.ReactNode; p
   );
 }
 
+/**
+ * Thin 1-arg wrappers so we can pass server actions that take `(prev, formData)`
+ * to native `<form action={...}>` / `<button formAction={...}>` props which
+ * only accept `(formData) => void`. Errors from these wrappers are surfaced
+ * via the `_state` param to the underlying action.
+ */
+async function googleFormAction(formData: FormData) {
+  await signInWithGoogle(null, formData);
+}
+
 function GoogleButton() {
   const { pending } = useFormStatus();
   return (
@@ -36,7 +46,7 @@ function GoogleButton() {
       className="w-full"
       disabled={pending}
       aria-busy={pending}
-      formAction={signInWithGoogle}
+      formAction={googleFormAction}
     >
       {pending ? "Conectando…" : "Continuar con Google"}
     </Button>
@@ -177,7 +187,7 @@ export function LoginForm({ next }: { next?: string }) {
 
 export function GoogleSignIn({ next }: { next?: string }) {
   return (
-    <form action={signInWithGoogle} className="space-y-2">
+    <form action={googleFormAction} className="space-y-2">
       {next ? <input type="hidden" name="next" value={next} /> : null}
       <GoogleButton />
     </form>
