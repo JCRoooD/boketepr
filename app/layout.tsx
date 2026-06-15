@@ -18,13 +18,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "BoketePR — Reporta los baches de Puerto Rico",
+    default: "BoketePR — Reporta los hoyos de Puerto Rico",
     template: "%s · BoketePR",
   },
   description:
-    "Reporta los baches de Puerto Rico con una foto y tu ubicación. Nuestra IA los clasifica para que las autoridades sepan cuáles arreglar primero.",
+    "Reporta los hoyos de Puerto Rico con una foto y tu ubicación. Nuestra IA los clasifica para que las autoridades sepan cuáles arreglar primero.",
   keywords: [
-    "baches",
+    "hoyos",
     "Puerto Rico",
     "potholes",
     "carreteras",
@@ -38,15 +38,15 @@ export const metadata: Metadata = {
     locale: "es_PR",
     url: "https://boketepr.vercel.app",
     siteName: "BoketePR",
-    title: "BoketePR — Reporta los baches de Puerto Rico",
+    title: "BoketePR — Reporta los hoyos de Puerto Rico",
     description:
-      "Reporta los baches de Puerto Rico con una foto y tu ubicación. Nuestra IA los clasifica para que las autoridades sepan cuáles arreglar primero.",
+      "Reporta los hoyos de Puerto Rico con una foto y tu ubicación. Nuestra IA los clasifica para que las autoridades sepan cuáles arreglar primero.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "BoketePR — Reporta los baches de Puerto Rico",
+    title: "BoketePR — Reporta los hoyos de Puerto Rico",
     description:
-      "Reporta los baches de Puerto Rico con una foto y tu ubicación.",
+      "Reporta los hoyos de Puerto Rico con una foto y tu ubicación.",
   },
   robots: {
     index: true,

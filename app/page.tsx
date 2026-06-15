@@ -27,7 +27,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl">
-              Toma una foto del bache, confirma tu ubicación, y nuestro sistema
+              Toma una foto del hoyo, confirma tu ubicación, y nuestro sistema
               lo clasifica automáticamente para que las autoridades sepan cuáles
               arreglar primero.
             </p>
@@ -48,7 +48,7 @@ export default function HomePage() {
                 className="w-full sm:w-auto"
               >
                 <Camera className="size-4" aria-hidden="true" />
-                Reportar un bache
+                Reportar un hoyo
               </Button>
             </div>
 
@@ -80,7 +80,7 @@ export default function HomePage() {
                 <CardTitle>1. Toma una foto</CardTitle>
                 <CardDescription>
                   Usa la cámara de tu teléfono. No necesitas ser fotógrafo &mdash;
-                  cualquier foto del bache sirve.
+                  cualquier foto del hoyo sirve.
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -104,7 +104,7 @@ export default function HomePage() {
                 </div>
                 <CardTitle>3. Nuestra IA lo clasifica</CardTitle>
                 <CardDescription>
-                  En menos de 5 segundos, el bache aparece en el mapa con una
+                  En menos de 5 segundos, el hoyo aparece en el mapa con una
                   puntuación de severidad del 1 al 10.
                 </CardDescription>
               </CardHeader>
@@ -124,7 +124,7 @@ export default function HomePage() {
               <div>
                 <h3 className="text-lg font-semibold">Visibilidad real</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Los baches no se arreglan solos. BoketePR pone los baches en
+                  Los hoyos no se arreglan solos. BoketePR pone los hoyos en
                   un mapa público para que las comunidades y las autoridades
                   vean dónde urge más la reparación.
                 </p>
@@ -132,7 +132,7 @@ export default function HomePage() {
               <div>
                 <h3 className="text-lg font-semibold">Clasificación con IA</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  No todos los baches son iguales. Nuestra IA analiza cada foto
+                  No todos los hoyos son iguales. Nuestra IA analiza cada foto
                   y asigna una severidad del 1 al 10, para que los recursos se
                   usen donde más se necesitan.
                 </p>
@@ -161,7 +161,7 @@ export default function HomePage() {
         <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              ¿Viste un bache hoy?
+              ¿Viste un hoyo hoy?
             </h2>
             <p className="mt-4 text-lg text-muted-foreground">
               Tu reporte puede ser el empujón que necesita esa calle para
@@ -170,7 +170,7 @@ export default function HomePage() {
             <div className="mt-8">
               <Button size="lg" render={<Link href="/reportar" />}>
                 <Camera className="size-4" aria-hidden="true" />
-                Reportar un bache
+                Reportar un hoyo
               </Button>
             </div>
           </div>
