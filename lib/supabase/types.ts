@@ -1,8 +1,8 @@
 /**
  * Database type definitions for BoketePR.
  *
- * Hand-written from the migration in `lib/db/migrations/0001_initial_schema.sql`.
- * If you change the schema, regenerate with:
+ * Hand-written from the migrations in `lib/db/migrations/`. If you change
+ * the schema, regenerate with:
  *
  *   npx supabase gen types typescript --project-id dyeskzwmapznizwgpewa > lib/supabase/types.ts
  *
@@ -18,6 +18,7 @@ export type Database = {
           display_name: string | null;
           avatar_url: string | null;
           created_at: string;
+          updated_at: string;
           reports_submitted: number;
           is_banned: boolean;
         };
@@ -26,6 +27,7 @@ export type Database = {
           display_name?: string | null;
           avatar_url?: string | null;
           created_at?: string;
+          updated_at?: string;
           reports_submitted?: number;
           is_banned?: boolean;
         };
@@ -34,6 +36,7 @@ export type Database = {
           display_name?: string | null;
           avatar_url?: string | null;
           created_at?: string;
+          updated_at?: string;
           reports_submitted?: number;
           is_banned?: boolean;
         };
