@@ -1,4 +1,5 @@
 import { LogOut } from "lucide-react";
+import Link from "next/link";
 
 import { signOut } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
@@ -93,12 +94,12 @@ export default async function ProfilePage() {
 
         <p className="text-xs text-muted-foreground">
           ¿Quieres reportar un hoyo?{" "}
-          <a
+          <Link
             href="/"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
             Vuelve al inicio
-          </a>{" "}
+          </Link>{" "}
           y haz clic en <strong>Reportar un hoyo</strong>.
         </p>
       </div>

@@ -43,8 +43,18 @@ export async function TopNav() {
         </Link>
 
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" render={<Link href="/map" />}>
+            Ver el mapa
+          </Button>
           {user ? (
             <>
+              <Button
+                variant="default"
+                size="sm"
+                render={<Link href="/submit" />}
+              >
+                Reportar un hoyo
+              </Button>
               <Button variant="ghost" size="sm" render={<Link href="/profile" />}>
                 Mi perfil
               </Button>
