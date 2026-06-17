@@ -160,7 +160,9 @@ console.log("  ✓ report created:", reportBody.id);
 console.log("6. Verifying in database…");
 const { data: row, error: readErr } = await admin
   .from("reports")
-  .select("id, user_id, geohash, severity, severity_reason, status")
+  .select(
+    "id, user_id, geohash, severity, severity_reason, hazards, ai_scored_at, ai_model_version",
+  )
   .eq("id", reportBody.id)
   .single();
 if (readErr || !row) {
@@ -168,11 +170,18 @@ if (readErr || !row) {
   process.exit(1);
 }
 console.log("  ✓ row found in DB:");
-console.log("    user_id:", row.user_id);
-console.log("    geohash:", row.geohash);
-console.log("    severity (placeholder):", row.severity);
-console.log("    reason (placeholder):", row.severity_reason);
-console.log("    status:", row.status);
+console.log("    user_id:        ", row.user_id);
+console.log("    geohash:        ", row.geohash);
+console.log("    severity:       ", row.severity);
+console.log("    reason:         ", row.severity_reason);
+console.log("    hazards:        ", JSON.stringify(row.hazards));
+console.log("    ai_model:       ", row.ai_model_version ?? "(not scored)");
+console.log("    ai_scored_at:   ", row.ai_scored_at ?? "(not scored)");
+
+if (!row.ai_scored_at) {
+  console.error("  ✗ AI scoring did not run (ai_scored_at is null). The row has the placeholder.");
+  process.exit(1);
+}
 
 console.log("7. Verifying photo in Storage…");
 const { data: files, error: listErr } = await admin.storage
