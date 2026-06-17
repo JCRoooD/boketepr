@@ -61,6 +61,7 @@ export type Database = {
           created_at: string;
           updated_at: string;
           ai_model_version: string | null;
+          ai_scored_at: string | null;
           confirm_count: number;
           dispute_count: number;
           submitted_to_dtop: boolean;
@@ -81,6 +82,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           ai_model_version?: string | null;
+          ai_scored_at?: string | null;
           confirm_count?: number;
           dispute_count?: number;
           submitted_to_dtop?: boolean;
@@ -100,6 +102,7 @@ export type Database = {
           created_at?: string;
           updated_at?: string;
           ai_model_version?: string | null;
+          ai_scored_at?: string | null;
           confirm_count?: number;
           dispute_count?: number;
           submitted_to_dtop?: boolean;

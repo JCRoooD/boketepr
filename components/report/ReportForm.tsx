@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * ReportForm — Goal 3 (submit, no AI yet).
+ * ReportForm — Goal 3 (submit) + Goal 4 (AI severity scoring).
  *
  * Flow:
  *   1. User picks a photo
@@ -22,22 +22,65 @@ import { createClient } from "@/lib/supabase/client";
  *   4. On submit:
  *      a. POST /api/upload → get signed URL + publicUrl
  *      b. supabase.storage.uploadToSignedUrl(...)
- *      c. POST /api/reports → server validates + inserts
- *   5. Show success state with link to /map
+ *      c. POST /api/reports → server validates, inserts, calls OpenAI Vision,
+ *         updates the row. Client gets the FINAL row back (real severity)
+ *         or the placeholder if scoring failed.
+ *   5. Show success state with the AI's severity + reason + hazards
  *
- * Note: we deliberately don't use react-hook-form here. The form has 4
- * fields (photo, lat, lng, comment) and the photo + location are non-text
- * state that doesn't play well with RHF's Controller. Plain useState is
- * clearer for this size. If the form grows, swap in RHF + zod.
+ * The button label cycles through "uploading" → "scoring" → success,
+ * giving the user feedback during the ~5-10s OpenAI call.
  */
 const CommentSchema = z.string().max(280, "Máximo 280 caracteres.");
 
 type SubmitState =
   | { kind: "idle" }
   | { kind: "uploading" }
-  | { kind: "saving" }
-  | { kind: "success"; reportId: string }
+  | { kind: "scoring" }
+  | { kind: "success"; report: ReportResult }
   | { kind: "error"; message: string };
+
+interface ReportResult {
+  id: string;
+  severity: number;
+  severity_reason: string;
+  hazards: string[];
+  ai_scored: boolean;
+  ai_model_version: string | null;
+  score_error: string | null;
+}
+
+function severityColor(s: number): {
+  bg: string;
+  text: string;
+  label: string;
+} {
+  if (s <= 3) {
+    return {
+      bg: "bg-green-100 dark:bg-green-950/40",
+      text: "text-green-800 dark:text-green-200",
+      label: "Leve",
+    };
+  }
+  if (s <= 6) {
+    return {
+      bg: "bg-yellow-100 dark:bg-yellow-950/40",
+      text: "text-yellow-800 dark:text-yellow-200",
+      label: "Moderado",
+    };
+  }
+  if (s <= 8) {
+    return {
+      bg: "bg-orange-100 dark:bg-orange-950/40",
+      text: "text-orange-800 dark:text-orange-200",
+      label: "Severo",
+    };
+  }
+  return {
+    bg: "bg-red-100 dark:bg-red-950/40",
+    text: "text-red-800 dark:text-red-200",
+    label: "Peligroso",
+  };
+}
 
 export function ReportForm() {
   const router = useRouter();
@@ -51,7 +94,8 @@ export function ReportForm() {
   const [commentError, setCommentError] = useState<string | null>(null);
   const [state, setState] = useState<SubmitState>({ kind: "idle" });
 
-  const submitting = state.kind === "uploading" || state.kind === "saving";
+  const submitting =
+    state.kind === "uploading" || state.kind === "scoring";
   const canSubmit =
     !submitting && photo != null && location != null;
 
@@ -59,7 +103,6 @@ export function ReportForm() {
     e.preventDefault();
     if (!canSubmit || !photo || !location) return;
 
-    // Validate comment client-side (server re-validates too)
     const commentParse = CommentSchema.safeParse(comment);
     if (!commentParse.success) {
       setCommentError(commentParse.error.issues[0]?.message ?? "Inválido.");
@@ -107,8 +150,9 @@ export function ReportForm() {
         throw new Error("No pudimos subir la foto. Intenta de nuevo.");
       }
 
-      // 3. Create the report row
-      setState({ kind: "saving" });
+      // 3. Create the report row + run AI scoring on the server.
+      //    This call takes ~5-10s while the server talks to OpenAI.
+      setState({ kind: "scoring" });
       const reportRes = await fetch("/api/reports", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -127,8 +171,8 @@ export function ReportForm() {
         throw new Error(body.error ?? "No pudimos guardar el reporte.");
       }
 
-      const created = (await reportRes.json()) as { id: string };
-      setState({ kind: "success", reportId: created.id });
+      const created = (await reportRes.json()) as ReportResult;
+      setState({ kind: "success", report: created });
     } catch (err) {
       console.error(err);
       const message =
@@ -138,6 +182,9 @@ export function ReportForm() {
   }
 
   if (state.kind === "success") {
+    const r = state.report;
+    const scored = r.ai_scored;
+    const sev = severityColor(r.severity);
     return (
       <Card>
         <CardHeader>
@@ -146,13 +193,50 @@ export function ReportForm() {
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4 text-center">
-          <p className="text-muted-foreground">
-            Tu reporte fue enviado. Lo verás en el mapa en unos minutos.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            (El puntaje de severidad se asigna automáticamente cuando
-            activemos el análisis con IA en la próxima versión.)
-          </p>
+          {/* Severity badge — the AI's main output */}
+          <div
+            className={`flex flex-col items-center gap-1 rounded-lg px-6 py-4 ${sev.bg}`}
+          >
+            <div className={`text-4xl font-bold ${sev.text}`}>
+              {r.severity.toFixed(1)} <span className="text-2xl">/ 10</span>
+            </div>
+            <div className={`text-sm font-semibold uppercase tracking-wide ${sev.text}`}>
+              {sev.label}
+            </div>
+          </div>
+
+          {/* Reason text — the AI's explanation */}
+          {scored && r.severity_reason && (
+            <p className="text-sm text-foreground">{r.severity_reason}</p>
+          )}
+
+          {/* Hazards as tags */}
+          {scored && r.hazards.length > 0 && (
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {r.hazards.map((h) => (
+                <span
+                  key={h}
+                  className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
+                >
+                  {h}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Model attribution + error fallback */}
+          {scored ? (
+            <p className="text-xs text-muted-foreground">
+              Puntaje asignado por{" "}
+              <span className="font-mono">{r.ai_model_version ?? "OpenAI"}</span>
+            </p>
+          ) : (
+            <div className="rounded-md border border-yellow-500/50 bg-yellow-50 px-3 py-2 text-xs text-yellow-900 dark:bg-yellow-950/30 dark:text-yellow-200">
+              No pudimos calcular el puntaje con IA en este momento.
+              Tu reporte fue guardado y aparecerá en el mapa con un puntaje provisional.
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button onClick={() => router.push("/map")}>Ver el mapa</Button>
             <Button
@@ -226,8 +310,8 @@ export function ReportForm() {
       >
         {state.kind === "uploading"
           ? "Subiendo foto…"
-          : state.kind === "saving"
-            ? "Guardando reporte…"
+          : state.kind === "scoring"
+            ? "Analizando con IA…"
             : "Enviar reporte"}
       </Button>
 
