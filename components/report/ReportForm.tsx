@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { severityStyle } from "@/lib/reports/severity";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -54,31 +55,11 @@ function severityColor(s: number): {
   text: string;
   label: string;
 } {
-  if (s <= 3) {
-    return {
-      bg: "bg-green-100 dark:bg-green-950/40",
-      text: "text-green-800 dark:text-green-200",
-      label: "Leve",
-    };
-  }
-  if (s <= 6) {
-    return {
-      bg: "bg-yellow-100 dark:bg-yellow-950/40",
-      text: "text-yellow-800 dark:text-yellow-200",
-      label: "Moderado",
-    };
-  }
-  if (s <= 8) {
-    return {
-      bg: "bg-orange-100 dark:bg-orange-950/40",
-      text: "text-orange-800 dark:text-orange-200",
-      label: "Severo",
-    };
-  }
+  const style = severityStyle(s);
   return {
-    bg: "bg-red-100 dark:bg-red-950/40",
-    text: "text-red-800 dark:text-red-200",
-    label: "Peligroso",
+    bg: style.badgeBg,
+    text: style.badgeText,
+    label: style.label,
   };
 }
 

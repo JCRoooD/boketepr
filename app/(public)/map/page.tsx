@@ -1,56 +1,50 @@
-import Link from "next/link";
-import { MapPin } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { MapView } from "@/components/map/MapView";
+import { MAX_INITIAL_PINS, type ReportPin } from "@/lib/reports/queries";
+import { createClient } from "@/lib/supabase/server";
 
 /**
- * /map — placeholder for Goal 5.
+ * /map — Goal 5 public map.
  *
- * The live Google Map with all reported potholes as colored pins will
- * land in Goal 5. For now, this page exists so the success state from
- * the submit form can link somewhere meaningful.
+ * Server component: fetches the most recent active reports (limit 500,
+ * T5.6) and the current user (for the "mark as fixed" check), then
+ * hands both to the client-side <MapView /> which handles the Google
+ * Map rendering, Realtime subscriptions, and pin interactions.
+ *
+ * Why a server component for the initial fetch:
+ *   - The map renders with pins visible on first paint, no flash.
+ *   - We can read the auth cookie server-side without a second
+ *     round-trip from the client.
+ *   - The Supabase server client uses the standard anon key here
+ *     (the RLS policy on `reports` is public read), so no service
+ *     role is needed.
  */
-export default function MapPage() {
-  return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col items-center justify-center gap-6 px-4 py-20 sm:px-6">
-      <div className="flex size-16 items-center justify-center rounded-full bg-muted">
-        <MapPin className="size-8 text-muted-foreground" aria-hidden="true" />
-      </div>
-      <div className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight">
-          El mapa llega pronto
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Aquí verás todos los hoyos reportados en Puerto Rico, coloreados
-          por severidad. Estamos terminando de conectarlo con Google Maps.
-        </p>
-      </div>
+export default async function MapPage() {
+  const supabase = await createClient();
 
-      <Card>
-        <CardContent className="flex flex-col gap-3 py-6">
-          <p className="text-sm text-muted-foreground">
-            Mientras tanto, puedes:
-          </p>
-          <ul className="ml-4 list-disc text-sm text-muted-foreground">
-            <li>Reportar un nuevo hoyo</li>
-            <li>Volver a la página principal</li>
-            <li>Ver tu perfil y tus reportes enviados</li>
-          </ul>
-          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-            <Button className="flex-1" render={<Link href="/submit" />}>
-              Reportar un hoyo
-            </Button>
-            <Button
-              className="flex-1"
-              variant="outline"
-              render={<Link href="/" />}
-            >
-              Inicio
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+  // Get the current user (for the "marcar como reparado" button on
+  // pins they own). Reading from the cookie, no round-trip cost.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Initial 500 active reports, newest first. T5.6.
+  const { data: initialReports, error } = await supabase
+    .from("reports")
+    .select(
+      "id, geohash, severity, severity_reason, hazards, created_at, photo_url, thumbnail_url, status, user_id",
+    )
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(MAX_INITIAL_PINS);
+
+  if (error) {
+    console.error("Failed to load initial reports for /map", error);
+  }
+
+  return (
+    <MapView
+      initialReports={(initialReports ?? []) as ReportPin[]}
+      currentUserId={user?.id ?? null}
+    />
   );
 }
