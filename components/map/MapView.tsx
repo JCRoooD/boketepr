@@ -22,6 +22,7 @@ import {
   subscribeToReportUpdates,
 } from "@/lib/reports/queries";
 import {
+  EMPTY_PINS,
   readCachedPins,
   subscribeToPinsCache,
   writeCachedPins,
@@ -100,8 +101,8 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
    */
   const cachedPins = useSyncExternalStore(
     subscribeToPinsCache,
-    () => readCachedPins(),
-    () => [] as ReportPin[],
+    readCachedPins,
+    () => EMPTY_PINS,
   );
 
   // Merge: server-provided pins first, then any cached pins we don't

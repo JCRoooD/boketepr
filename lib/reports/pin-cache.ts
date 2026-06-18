@@ -37,18 +37,46 @@ function hasWindow(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
+/**
+ * Module-level stable empty array. Returned by `getServerSnapshot` (and
+ * by `readCachedPins` when there's no cache yet) so that
+ * `useSyncExternalStore` always sees the same reference and doesn't
+ * trigger an infinite re-render loop.
+ *
+ * IMPORTANT: callers must not mutate this array. If you need to, copy
+ * it first. (No one mutates it today — `readCachedPins` only returns
+ * it as a fallback, and the component treats it as read-only.)
+ */
+export const EMPTY_PINS: readonly ReportPin[] = Object.freeze([]) as readonly ReportPin[];
+
 export const PINS_CACHE_KEY = CACHE_KEY;
 
-export function readCachedPins(): ReportPin[] {
-  if (!hasWindow()) return [];
+// Cache the last read so that repeated calls in the same render cycle
+// (or in the React 19 useSyncExternalStore snapshot getter, which gets
+// called on every render) get a stable reference. localStorage can
+// only change via `writeCachedPins`, which sets `lastWrittenRaw` to
+// invalidate this cache.
+let lastReadRaw: string | null = null;
+let lastReadResult: readonly ReportPin[] = EMPTY_PINS;
+
+export function readCachedPins(): readonly ReportPin[] {
+  if (!hasWindow()) return EMPTY_PINS;
   try {
     const raw = window.localStorage.getItem(CACHE_KEY);
-    if (!raw) return [];
+    // Same raw value as last time → return the cached parsed result.
+    if (raw === lastReadRaw) return lastReadResult;
+    lastReadRaw = raw;
+    if (!raw) {
+      lastReadResult = EMPTY_PINS;
+      return lastReadResult;
+    }
     const parsed = JSON.parse(raw) as CacheShape;
-    if (parsed.v !== 1 || !Array.isArray(parsed.pins)) return [];
-    return parsed.pins;
+    lastReadResult = parsed.v === 1 && Array.isArray(parsed.pins) ? parsed.pins : EMPTY_PINS;
+    return lastReadResult;
   } catch {
-    return [];
+    lastReadRaw = null;
+    lastReadResult = EMPTY_PINS;
+    return lastReadResult;
   }
 }
 
@@ -61,7 +89,12 @@ export function writeCachedPins(pins: ReportPin[]): void {
       pins: trimmed,
       savedAt: new Date().toISOString(),
     };
-    window.localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+    const raw = JSON.stringify(payload);
+    window.localStorage.setItem(CACHE_KEY, raw);
+    // Invalidate the read cache so the next readCachedPins() call
+    // re-parses the new value (and returns a new stable reference).
+    lastReadRaw = raw;
+    lastReadResult = trimmed;
     // Notify any useSyncExternalStore subscribers that the value
     // changed. We dispatch a storage event manually because the
     // browser only fires `storage` on OTHER tabs, not the one that
@@ -69,7 +102,7 @@ export function writeCachedPins(pins: ReportPin[]): void {
     window.dispatchEvent(
       new StorageEvent("storage", {
         key: CACHE_KEY,
-        newValue: JSON.stringify(payload),
+        newValue: raw,
       }),
     );
   } catch {
