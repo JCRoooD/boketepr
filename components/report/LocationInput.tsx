@@ -394,9 +394,24 @@ function PlacesAutocomplete({
         const address = place.formattedAddress ?? place.displayName ?? "";
         onPick({ lat, lng, source: "places", address });
       } catch (err) {
-        console.error("Place.fetchFields failed", err);
+        // Log the full error so DevTools shows the real cause. The
+        // common ones are:
+        //   - "Places API (New) has not been used in project … before
+        //     or it is disabled." → enable Places API (New) in Google
+        //     Cloud Console (Library → search "Places API (New)" → Enable)
+        //   - "This API project is not authorized to use this API." →
+        //     API key's "API restrictions" doesn't include Places API (New)
+        //   - "REQUEST_DENIED" with referer block → key's HTTP referrer
+        //     restrictions don't include the current domain
+        const detail =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err !== null
+              ? JSON.stringify(err)
+              : String(err);
+        console.error("[places] fetchFields failed:", detail, err);
         onError(
-          "No pudimos obtener los detalles de esa dirección. Intenta de nuevo.",
+          `No pudimos obtener los detalles de esa dirección (${detail}). Revisa la consola del navegador para más detalles.`,
         );
       }
     });
