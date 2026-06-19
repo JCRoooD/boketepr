@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 
-import { LocationInput } from "@/components/report/LocationInput";
+import { LocationInput, type LocationValue } from "@/components/report/LocationInput";
 import { PhotoInput } from "@/components/report/PhotoInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,11 +66,7 @@ function severityColor(s: number): {
 export function ReportForm() {
   const router = useRouter();
   const [photo, setPhoto] = useState<File | null>(null);
-  const [location, setLocation] = useState<{
-    lat: number;
-    lng: number;
-    source: "gps" | "manual";
-  } | null>(null);
+  const [location, setLocation] = useState<LocationValue | null>(null);
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState<string | null>(null);
   const [state, setState] = useState<SubmitState>({ kind: "idle" });
