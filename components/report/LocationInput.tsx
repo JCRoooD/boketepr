@@ -268,8 +268,10 @@ function PlacesButton({
           </p>
         )}
 
-        {/* Hidden mount point for the PlaceAutocompleteElement web component. */}
-        <div ref={containerRef} className="hidden" aria-hidden="true" />
+        {/* Mount point for the PlaceAutocompleteElement web component.
+            The element renders its own input + shadow-DOM dropdown, so
+            the container needs to be visible (not display:none). */}
+        <div ref={containerRef} />
       </div>
     </APIProvider>
   );
@@ -303,6 +305,27 @@ function PlacesAutocomplete({
     const el = new placesLib.PlaceAutocompleteElement({
       componentRestrictions: PR_RESTRICTION,
     });
+
+    // The element is itself a custom HTML element with its own input +
+    // shadow-DOM dropdown. We set a couple of attributes on it to make
+    // it fit our form (Spanish placeholder, full-width inside the
+    // container, accessible label).
+    el.setAttribute("placeholder", "Busca una calle o lugar en Puerto Rico…");
+    el.classList.add(
+      "w-full",
+      "rounded-md",
+      "border",
+      "border-input",
+      "bg-background",
+      "px-3",
+      "py-2",
+      "text-sm",
+      "shadow-sm",
+      "focus-within:border-ring",
+      "focus-within:ring-1",
+      "focus-within:ring-ring/50",
+    );
+    el.setAttribute("aria-label", "Buscar dirección");
 
     // The new component fires `gmp-placeselect` (a custom DOM event)
     // when the user picks a suggestion. The `place` is a Place object
