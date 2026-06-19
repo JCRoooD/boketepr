@@ -37,20 +37,32 @@ declare global {
 
     /**
      * The new "Places API (New)" web component. Drop this into the DOM
-     * and listen for the `gmp-select` event to get a `Place` object.
+     * and listen for the `gmp-select` event.
      *
-     * `fetchFields` makes a follow-up call to load the requested fields
-     * (location, formattedAddress, displayName, etc.).
+     * The event's shape depends on which subclass dispatches it:
+     *   - `PlaceAutocompleteElement` (this class) dispatches an event
+     *     with `{ placePrediction }`. To get a full Place, call
+     *     `placePrediction.toPlace()` (one async Places API (New)
+     *     Detail call), then `place.fetchFields(...)` for the fields
+     *     you want (another API call).
+     *   - `BasicPlaceAutocompleteElement` dispatches an event with
+     *     `{ place }` directly (it already called `toPlace()` for
+     *     you). You still need `fetchFields()` to load fields like
+     *     `location` and `formattedAddress`.
      *
-     * Note: Google's docs page for PlaceAutocompleteElement still says
-     * `gmp-placeselect`, but the live places.js bundle dispatches
-     * `gmp-select` (the Event subclass `G8`). The docs are stale.
+     * Google's docs still describe `event.place` as the universal
+     * shape, but the v65 SDK bundle really delivers `placePrediction`
+     * from `PlaceAutocompleteElement`. Inspect the SDK source before
+     * trusting the docs.
      */
     class PlaceAutocompleteElement extends HTMLElement {
       constructor(options?: PlaceAutocompleteElementOptions);
       addEventListener(
         type: "gmp-select",
-        listener: (event: { place: Place }) => void,
+        listener: (event: {
+          place?: Place;
+          placePrediction?: { toPlace(): Promise<Place> };
+        }) => void,
       ): void;
     }
 

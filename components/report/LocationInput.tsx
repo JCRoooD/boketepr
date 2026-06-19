@@ -371,15 +371,47 @@ function PlacesAutocomplete({
     // inspecting the live places.js bundle shows the dispatched event
     // type is actually `gmp-select` (Event subclass `G8`). Docs lag.
     el.addEventListener("gmp-select", async (event) => {
-      // The web component dispatches a custom DOM event with `place` as
-      // a direct property (not in `.detail`). The ambient type
-      // declaration in types/google-maps.d.ts only declares a class-
-      // scoped `addEventListener` overload, which TS doesn't always
-      // pick when calling through the inherited HTMLElement signature,
-      // so we cast here.
-      const { place } = event as unknown as { place: google.maps.places.Place };
+      // The SDK's "Places API (New)" dispatched event class is either
+      //   - G8 (BasicPlaceAutocompleteElement): has `place` getter
+      //     (the consumer is given the resolved Place directly), OR
+      //   - DDb (PlaceAutocompleteElement): has `placePrediction` getter
+      //     (the consumer must call prediction.toPlace() to fetch the
+      //     full Place data via a separate API call).
+      //
+      // We're using PlaceAutocompleteElement, so the event has
+      // `placePrediction`, NOT `place`. (Google's docs lag the SDK —
+      // they still describe event.place as if it were a Place.)
+      const eventAny = event as unknown as {
+        place?: google.maps.places.Place;
+        placePrediction?: { toPlace(): Promise<google.maps.places.Place> };
+      };
       try {
         onStatusChange("searching");
+
+        // Resolve to a real Place. If the event already gives us a
+        // Place (BasicPlaceAutocompleteElement path), use it as-is.
+        let place: google.maps.places.Place | null | undefined;
+        if (eventAny.place) {
+          place = eventAny.place;
+        } else if (eventAny.placePrediction) {
+          // toPlace() makes one Places API (New) Detail call.
+          place = await eventAny.placePrediction.toPlace();
+        } else {
+          onError(
+            "No pudimos identificar esa dirección. Intenta otra vez.",
+          );
+          return;
+        }
+
+        if (!place) {
+          onError(
+            "No encontramos esa dirección. Prueba con otra más específica.",
+          );
+          return;
+        }
+
+        // fetchFields() makes a second API call to load the requested
+        // fields. Without this, place.location is null.
         await place.fetchFields({
           fields: ["location", "formattedAddress", "displayName"],
         });
@@ -409,7 +441,7 @@ function PlacesAutocomplete({
             : typeof err === "object" && err !== null
               ? JSON.stringify(err)
               : String(err);
-        console.error("[places] fetchFields failed:", detail, err);
+        console.error("[places] pick failed:", detail, err);
         onError(
           `No pudimos obtener los detalles de esa dirección (${detail}). Revisa la consola del navegador para más detalles.`,
         );
