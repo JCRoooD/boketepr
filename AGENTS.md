@@ -29,8 +29,9 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 3 | Submit a hoyo | done | `/submit` → upload to Storage → `reports` row |
 | 4 | AI severity scoring | done | gpt-4o-mini, 1-10 score, Spanish reason + hazards, ~2s per call |
 | 5 | Public live map | done | `/map` with Google Maps, color-coded pins, real-time updates, "mark as fixed" for owner, shareable `/report/[id]` URLs with OG tags |
+| 6 | Places autocomplete | done | "Buscar dirección" on `/submit` — Google Places, PR-only, third option alongside GPS and manual coords |
 
-## Key files (Goal 4 + 5)
+## Key files (Goal 4 + 5 + 6)
 
 Map UI (client):
 - `app/(public)/map/page.tsx` — server component, fetches initial 500 active reports
@@ -53,6 +54,10 @@ Goal 4 (AI):
 Goal 5 (API):
 - `app/api/reports/[id]/fix/route.ts` — mark as fixed (RLS-enforced owner check)
 - `app/report/[id]/page.tsx` — shareable standalone URL with OG/Twitter meta
+
+Goal 6 (Places):
+- `components/report/LocationInput.tsx` — three modes: GPS / Places / Manual. `LocationValue` type exported.
+- `app/globals.css` — `.pac-container` / `.pac-item` styled to match the app, z-index 9999
 
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
@@ -80,7 +85,7 @@ Tests:
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` — public, in `.env.local` + Vercel
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only, bypasses RLS. **Never** prefix with `NEXT_PUBLIC_`.
 - `OPENAI_API_KEY` — server-only
-- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — public, used by the map's `APIProvider`. **Must** be prefixed `NEXT_PUBLIC_` (the old `GOOGLE_MAPS_API_KEY` name in old docs is wrong). Restrict the key in Google Cloud Console to `boketepr.vercel.app` + `localhost:3000` for dev.
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — public, used by the map's `APIProvider`. **Must** be prefixed `NEXT_PUBLIC_` (the old `GOOGLE_MAPS_API_KEY` name in old docs is wrong). Restrict the key in Google Cloud Console to `boketepr.vercel.app` + `localhost:3000` for dev. **Goal 6 requires the Places API to be enabled in the same project** — if autocomplete silently fails, that's almost always why.
 
 ## Current state (as of last session)
 - Build: clean (`tsc --noEmit` passes, `next build` registers all 12 routes)
