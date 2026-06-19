@@ -362,11 +362,15 @@ function PlacesAutocomplete({
     );
     el.setAttribute("aria-label", "Buscar dirección");
 
-    // The new component fires `gmp-placeselect` (a custom DOM event)
-    // when the user picks a suggestion. The `place` is a Place object
-    // from "Places API (New)" — to read location/address fields you
-    // have to call `fetchFields()`, which makes a follow-up API call.
-    el.addEventListener("gmp-placeselect", async (event) => {
+    // The new component fires `gmp-select` (a custom DOM event) when
+    // the user picks a suggestion. The `place` is a Place object from
+    // "Places API (New)" — to read location/address fields you have to
+    // call `fetchFields()`, which makes a follow-up API call.
+    //
+    // Note: the official Google docs still say `gmp-placeselect`, but
+    // inspecting the live places.js bundle shows the dispatched event
+    // type is actually `gmp-select` (Event subclass `G8`). Docs lag.
+    el.addEventListener("gmp-select", async (event) => {
       // The web component dispatches a custom DOM event with `place` as
       // a direct property (not in `.detail`). The ambient type
       // declaration in types/google-maps.d.ts only declares a class-

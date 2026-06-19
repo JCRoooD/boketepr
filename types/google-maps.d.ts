@@ -37,15 +37,19 @@ declare global {
 
     /**
      * The new "Places API (New)" web component. Drop this into the DOM
-     * and listen for the `gmp-placeselect` event to get a `Place` object.
+     * and listen for the `gmp-select` event to get a `Place` object.
      *
      * `fetchFields` makes a follow-up call to load the requested fields
      * (location, formattedAddress, displayName, etc.).
+     *
+     * Note: Google's docs page for PlaceAutocompleteElement still says
+     * `gmp-placeselect`, but the live places.js bundle dispatches
+     * `gmp-select` (the Event subclass `G8`). The docs are stale.
      */
     class PlaceAutocompleteElement extends HTMLElement {
       constructor(options?: PlaceAutocompleteElementOptions);
       addEventListener(
-        type: "gmp-placeselect",
+        type: "gmp-select",
         listener: (event: { place: Place }) => void,
       ): void;
     }
