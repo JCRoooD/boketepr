@@ -1,12 +1,13 @@
 "use client";
 
 import { APIProvider, useMapsLibrary } from "@vis.gl/react-google-maps";
-import { Loader2, MapPin, Pencil, Search } from "lucide-react";
+import { Check, Loader2, MapPin, Pencil, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PR_BOUNDING_BOX } from "@/lib/geo/pr-bbox";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,8 +19,10 @@ import { cn } from "@/lib/utils";
  *   3. "Ingresar coordenadas" — manual lat/lng (dev / fallback)
  *
  * Only one mode is active at a time. The chosen location is reported
- * back to the parent with a `source` discriminator so the parent can
- * show e.g. the formatted address in a future v1.1 update.
+ * back to the parent with a `source` discriminator and (for places)
+ * a formatted address. A unified "Ubicación confirmada" card below
+ * the three buttons is always shown when a location is set, regardless
+ * of source.
  *
  * Why three options:
  *   - GPS is the obvious one, but on a desktop browser it can be 50-500
@@ -41,16 +44,35 @@ export interface LocationValue {
   address?: string;
 }
 
-const PR_RESTRICTION = { country: "pr" } as const;
+/**
+ * PR bounding box in the shape the new `PlaceAutocompleteElement`
+ * expects for `locationRestriction`. Note the SW/NE corner convention:
+ * south/west is the lower-left, north/east is the upper-right.
+ *
+ * The legacy `componentRestrictions: { country: "pr" }` option does
+ * NOT work with the new `PlaceAutocompleteElement` (it was a legacy
+ * Autocomplete widget option). For the new API you must give a
+ * LatLngBoundsLiteral that covers the whole island.
+ */
+const PR_LOCATION_RESTRICTION = {
+  south: PR_BOUNDING_BOX.minLat,
+  west: PR_BOUNDING_BOX.minLng,
+  north: PR_BOUNDING_BOX.maxLat,
+  east: PR_BOUNDING_BOX.maxLng,
+} as const;
 
 export function LocationInput({
   lat,
   lng,
+  address,
+  source,
   onChange,
   disabled,
 }: {
   lat: number | null;
   lng: number | null;
+  address?: string | null;
+  source?: LocationSource | null;
   onChange: (loc: LocationValue) => void;
   disabled?: boolean;
 }) {
@@ -84,6 +106,29 @@ export function LocationInput({
           disabled={disabled}
         />
       </div>
+
+      {/* Unified "current location" card — always shown when a
+          location is set, regardless of which button set it. */}
+      {lat != null && lng != null && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-green-500/40 bg-green-50 px-3 py-2 text-sm text-green-900 dark:bg-green-950/30 dark:text-green-200"
+        >
+          <Check className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <div className="flex flex-col gap-0.5">
+            <p className="font-medium">Ubicación confirmada</p>
+            {address && <p className="text-xs">{address}</p>}
+            <p className="font-mono text-xs">
+              {lat.toFixed(5)}°, {lng.toFixed(5)}°
+              {source && (
+                <span className="ml-2 text-[10px] uppercase tracking-wide text-green-700/70 dark:text-green-300/70">
+                  ({source})
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
 
       {!hasGoogleKey && (
         <p className="text-xs text-muted-foreground">
@@ -204,7 +249,6 @@ function PlacesButton({
     "idle" | "searching" | "error"
   >("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [address, setAddress] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   if (!apiKey) {
@@ -232,7 +276,6 @@ function PlacesButton({
           <PlacesAutocomplete
             containerRef={containerRef}
             onPick={(loc) => {
-              setAddress(loc.address ?? null);
               setErrorMsg(null);
               setStatus("idle");
               onChange(loc);
@@ -254,17 +297,6 @@ function PlacesButton({
             )}
           >
             {errorMsg}
-          </p>
-        )}
-
-        {/* Show the address the user just picked, even after the input closes. */}
-        {!open && address && lat != null && lng != null && (
-          <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
-            {address}
-            <br />
-            <span className="font-mono text-xs">
-              {lat.toFixed(5)}°, {lng.toFixed(5)}°
-            </span>
           </p>
         )}
 
@@ -298,12 +330,15 @@ function PlacesAutocomplete({
   useEffect(() => {
     if (!placesLib || !containerRef.current) return;
 
-    // Construct the new web component. componentRestrictions still works
-    // the same way (per-country filtering) on the new API. We omit
-    // `includedPrimaryTypes` because the v1.1 UX is "any address in PR"
-    // — the user can search a street, business, or landmark.
+    // Construct the new web component. We use `locationRestriction` (a
+    // LatLngBoundsLiteral covering the whole island) instead of the
+    // legacy `componentRestrictions: { country: "pr" }` — the new
+    // element doesn't honor that option. Restricting to a bounding
+    // box also has the nice side effect of preventing users from
+    // accidentally picking a non-PR result (e.g. "San Juan" in
+    // Argentina or the Philippines).
     const el = new placesLib.PlaceAutocompleteElement({
-      componentRestrictions: PR_RESTRICTION,
+      locationRestriction: PR_LOCATION_RESTRICTION,
     });
 
     // The element is itself a custom HTML element with its own input +

@@ -244,6 +244,8 @@ export function ReportForm() {
       <LocationInput
         lat={location?.lat ?? null}
         lng={location?.lng ?? null}
+        address={location?.address ?? null}
+        source={location?.source ?? null}
         onChange={setLocation}
         disabled={submitting}
       />
