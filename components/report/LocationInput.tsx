@@ -205,15 +205,7 @@ function PlacesButton({
   >("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // If the parent already has a location whose source is "places",
-  // reflect its address on mount.
-  useEffect(() => {
-    // No-op: the address is captured at pick time. Resetting lat/lng
-    // from outside (e.g. user clears the form) clears `address` too via
-    // the change handler below.
-  }, []);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   if (!apiKey) {
     // Render nothing — the parent LocationInput shows a hint instead.
@@ -238,7 +230,7 @@ function PlacesButton({
 
         {open && (
           <PlacesAutocomplete
-            inputRef={inputRef}
+            containerRef={containerRef}
             onPick={(loc) => {
               setAddress(loc.address ?? null);
               setErrorMsg(null);
@@ -275,92 +267,107 @@ function PlacesButton({
             </span>
           </p>
         )}
+
+        {/* Hidden mount point for the PlaceAutocompleteElement web component. */}
+        <div ref={containerRef} className="hidden" aria-hidden="true" />
       </div>
     </APIProvider>
   );
 }
 
 function PlacesAutocomplete({
-  inputRef,
+  containerRef,
   onPick,
   onError,
   onStatusChange,
   disabled,
 }: {
-  inputRef: React.MutableRefObject<HTMLInputElement | null>;
+  containerRef: React.MutableRefObject<HTMLDivElement | null>;
   onPick: (loc: LocationValue) => void;
   onError: (msg: string) => void;
   onStatusChange: (s: "idle" | "searching" | "error") => void;
   disabled?: boolean;
 }) {
   const placesLib = useMapsLibrary("places");
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const elementRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(
+    null,
+  );
 
   useEffect(() => {
-    if (!placesLib || !inputRef.current) return;
+    if (!placesLib || !containerRef.current) return;
 
-    const autocomplete = new placesLib.Autocomplete(inputRef.current, {
+    // Construct the new web component. componentRestrictions still works
+    // the same way (per-country filtering) on the new API. We omit
+    // `includedPrimaryTypes` because the v1.1 UX is "any address in PR"
+    // — the user can search a street, business, or landmark.
+    const el = new placesLib.PlaceAutocompleteElement({
       componentRestrictions: PR_RESTRICTION,
-      fields: ["geometry", "formatted_address", "name"],
-      // 'address' = street address, 'establishment' = named places (e.g.
-      // businesses, parks), 'geocode' = administrative areas. Mixing
-      // them gives the richest results for a pothole app.
-      types: ["address", "establishment", "geocode"],
     });
 
-    autocomplete.addListener("place_changed", () => {
-      const place = autocomplete.getPlace();
-      if (!place.geometry?.location) {
+    // The new component fires `gmp-placeselect` (a custom DOM event)
+    // when the user picks a suggestion. The `place` is a Place object
+    // from "Places API (New)" — to read location/address fields you
+    // have to call `fetchFields()`, which makes a follow-up API call.
+    el.addEventListener("gmp-placeselect", async (event) => {
+      // The web component dispatches a custom DOM event with `place` as
+      // a direct property (not in `.detail`). The ambient type
+      // declaration in types/google-maps.d.ts only declares a class-
+      // scoped `addEventListener` overload, which TS doesn't always
+      // pick when calling through the inherited HTMLElement signature,
+      // so we cast here.
+      const { place } = event as unknown as { place: google.maps.places.Place };
+      try {
+        onStatusChange("searching");
+        await place.fetchFields({
+          fields: ["location", "formattedAddress", "displayName"],
+        });
+        const lat = place.location?.lat();
+        const lng = place.location?.lng();
+        if (lat == null || lng == null) {
+          onError(
+            "No encontramos esa dirección. Prueba con otra más específica.",
+          );
+          return;
+        }
+        const address = place.formattedAddress ?? place.displayName ?? "";
+        onPick({ lat, lng, source: "places", address });
+      } catch (err) {
+        console.error("Place.fetchFields failed", err);
         onError(
-          "No encontramos esa dirección. Prueba con otra más específica.",
+          "No pudimos obtener los detalles de esa dirección. Intenta de nuevo.",
         );
-        return;
       }
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
-      const address = place.formatted_address ?? place.name ?? "";
-      onPick({ lat, lng, source: "places", address });
     });
 
-    autocompleteRef.current = autocomplete;
+    // The element is itself a custom HTML element — append it into the
+    // hidden mount point so the Places UI lives in the DOM but doesn't
+    // affect our layout (it overlays its own dropdown via shadow DOM).
+    containerRef.current.appendChild(el);
+    elementRef.current = el;
     onStatusChange("idle");
 
     return () => {
-      // Detach listeners so HMR / route changes don't leak handlers.
-      if (autocompleteRef.current) {
-        google.maps.event.clearInstanceListeners(autocompleteRef.current);
-        autocompleteRef.current = null;
+      if (
+        elementRef.current &&
+        containerRef.current?.contains(elementRef.current)
+      ) {
+        containerRef.current.removeChild(elementRef.current);
       }
+      elementRef.current = null;
     };
-  }, [placesLib, inputRef, onPick, onError, onStatusChange]);
+  }, [placesLib, containerRef, onPick, onError, onStatusChange]);
 
+  // The web component renders itself when appended. We render a small
+  // hint + an optional inline error / loading state here, beneath the
+  // element's own UI.
   return (
     <div className="flex flex-col gap-1.5">
-      <Input
-        ref={inputRef}
-        type="text"
-        placeholder="Busca una calle, negocio o lugar en Puerto Rico…"
-        disabled={disabled}
-        autoComplete="off"
-        // The autocomplete dropdown is rendered by Google as a sibling of
-        // the input, with class .pac-container. Tailwind's preflight can
-        // break its positioning, so we ship a tiny style override via a
-        // global stylesheet fragment below.
-        onKeyDown={(e) => {
-          // Enter should pick the highlighted suggestion rather than
-          // submitting the surrounding form. The Autocomplete listens
-          // for Enter on its own, but the form's submit button can win
-          // the race if the user is fast.
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const keyboardEvent = new KeyboardEvent("keydown", {
-              key: "Enter",
-              bubbles: true,
-            });
-            inputRef.current?.dispatchEvent(keyboardEvent);
-          }
-        }}
-      />
+      {status === "searching" && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          Obteniendo coordenadas…
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         Solo mostramos resultados en Puerto Rico.
       </p>

@@ -130,36 +130,20 @@
 }
 
 /*
- * Google Places Autocomplete renders its suggestion dropdown as a
- * sibling of the input, with class `.pac-container`. Tailwind's
- * preflight + shadcn's CSS variables don't touch it, but the default
- * z-index (1000) can be eclipsed by our dialogs, popovers, and fixed
- * bottom bars. Bump it to a safe value above the rest of the app.
+ * NOTE: Google Places UI styling moved to the new
+ * `PlaceAutocompleteElement` web component, which uses shadow DOM.
+ * The legacy `.pac-container` / `.pac-item` rules below are kept as
+ * no-ops in case the v1 implementation ever comes back. They are
+ * inert because no code constructs a legacy `Autocomplete` anymore.
  */
 .pac-container {
   z-index: 9999 !important;
-  font-family: inherit;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  margin-top: 4px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
-  overflow: hidden;
 }
 .pac-item {
   padding: 8px 12px;
-  cursor: pointer;
   font-size: 14px;
-  color: var(--color-foreground);
-  background-color: var(--color-background);
   border-top: 1px solid var(--color-border);
 }
 .pac-item:first-child {
   border-top: none;
-}
-.pac-item:hover,
-.pac-item-selected {
-  background-color: var(--color-muted);
-}
-.pac-icon {
-  display: none;
 }
