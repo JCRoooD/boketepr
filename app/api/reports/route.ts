@@ -103,7 +103,10 @@ export async function POST(request: Request) {
   const geohash = encodeGeohash(lat, lng);
   const location = wktPoint(lat, lng);
 
-  // 6. Insert the report with placeholder severity
+  // 6. Insert the report with placeholder severity.
+  //    We write lat/lng explicitly here (the trigger would derive them
+  //    from `location` if we didn't, but being explicit is cheaper than
+  //    relying on the trigger for every insert).
   const service = createServiceClient();
   const { data: inserted, error: insertErr } = await service
     .from("reports")
@@ -111,13 +114,15 @@ export async function POST(request: Request) {
       user_id: user.id,
       location,
       geohash,
+      lat,
+      lng,
       photo_url,
       severity: 5.0,
       severity_reason: "Pendiente de análisis con IA.",
       hazards: [],
       user_comment: user_comment ?? null,
     })
-    .select("id, geohash, created_at")
+    .select("id, geohash, lat, lng, created_at")
     .single();
 
   if (insertErr || !inserted) {
@@ -133,6 +138,8 @@ export async function POST(request: Request) {
   let result: {
     id: string;
     geohash: string;
+    lat: number;
+    lng: number;
     severity: number;
     severity_reason: string;
     hazards: string[];
@@ -142,6 +149,8 @@ export async function POST(request: Request) {
   } = {
     id: inserted.id,
     geohash: inserted.geohash,
+    lat: inserted.lat,
+    lng: inserted.lng,
     severity: 5.0,
     severity_reason: "Pendiente de análisis con IA.",
     hazards: [],
@@ -173,7 +182,7 @@ export async function POST(request: Request) {
       })
       .eq("id", result.id)
       .select(
-        "id, geohash, severity, severity_reason, hazards, ai_model_version, ai_scored_at, created_at",
+        "id, geohash, lat, lng, severity, severity_reason, hazards, ai_model_version, ai_scored_at, created_at",
       )
       .single();
 
@@ -186,6 +195,8 @@ export async function POST(request: Request) {
       result = {
         id: updated.id,
         geohash: updated.geohash,
+        lat: updated.lat,
+        lng: updated.lng,
         severity: updated.severity,
         severity_reason: updated.severity_reason,
         hazards: updated.hazards ?? [],
@@ -203,6 +214,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     id: result.id,
     geohash: result.geohash,
+    lat: result.lat,
+    lng: result.lng,
     severity: result.severity,
     severity_reason: result.severity_reason,
     hazards: result.hazards,

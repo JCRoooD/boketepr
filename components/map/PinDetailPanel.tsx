@@ -6,7 +6,6 @@ import { ExternalLink, MapPin, Wrench, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { decodeGeohash } from "@/lib/reports/geohash-decoder";
 import { severityStyle } from "@/lib/reports/severity";
 import type { ReportPin } from "@/lib/reports/queries";
 
@@ -45,7 +44,6 @@ export function PinDetailPanel({
   const [error, setError] = useState<string | null>(null);
 
   const style = severityStyle(report.severity);
-  const latlng = decodeGeohash(report.geohash);
   const isOwner = currentUserId != null && currentUserId === report.user_id;
   const submittedDate = new Date(report.created_at);
   const dateLabel = submittedDate.toLocaleDateString("es-PR", {
@@ -172,7 +170,7 @@ export function PinDetailPanel({
             <div className="flex items-center gap-1.5">
               <MapPin className="size-3.5" aria-hidden="true" />
               <span className="font-mono">
-                {latlng.lat.toFixed(4)}, {latlng.lng.toFixed(4)}
+                {report.lat.toFixed(4)}, {report.lng.toFixed(4)}
               </span>
             </div>
             <div>Reportado el {dateLabel}</div>

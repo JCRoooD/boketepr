@@ -28,10 +28,12 @@ export default async function MapPage() {
   } = await supabase.auth.getUser();
 
   // Initial 500 active reports, newest first. T5.6.
+  // Reads `lat`/`lng` directly from the row (mirrored from PostGIS by
+  // the migration 0004 trigger) — no more client-side geohash decode.
   const { data: initialReports, error } = await supabase
     .from("reports")
     .select(
-      "id, geohash, severity, severity_reason, hazards, created_at, photo_url, thumbnail_url, status, user_id",
+      "id, geohash, lat, lng, severity, severity_reason, hazards, user_comment, created_at, photo_url, thumbnail_url, status, user_id",
     )
     .eq("status", "active")
     .order("created_at", { ascending: false })

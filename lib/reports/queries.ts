@@ -10,19 +10,12 @@ import type { Report } from "@/lib/supabase/types";
  *   - A Realtime subscription so newly submitted reports appear as pins
  *     without a page reload.
  *
- * We don't expose the PostGIS `location` column directly to the map — the
- * maps API wants plain `{lat, lng}` numbers. The geography column comes
- * back as GeoJSON when the request includes `application/geo+json`, but
- * pulling that everywhere is awkward. For v1 we store a denormalized
- * `geohash` (already there) and let the client read both columns
- * separately. We can switch to a generated `lat`/`lng` column in a later
- * migration if perf becomes an issue.
- *
- * For now, the simplest thing that works: select `id, geohash, severity,
- * severity_reason, hazards, created_at, photo_url, status, user_id` and
- * decode the geohash into lat/lng on the client using the ngeohash lib.
- * Geohash → lat/lng is lossy (~1.2 km grid at 6 chars) but plenty
- * accurate to drop a pin.
+ * Display coordinates: the rows expose `lat` / `lng` directly (mirrored
+ * from the PostGIS `location` column by a trigger — migration 0004).
+ * Earlier versions decoded the 6-char `geohash` to its cell center, which
+ * is lossy by up to ~600 m. The `geohash` column is still in the
+ * ReportPin type (and still in the row) because it backs the cell-based
+ * neighbor index, but no UI code reads it for display anymore.
  */
 
 export const MAX_INITIAL_PINS = 500;
@@ -35,6 +28,8 @@ export type ReportPin = Pick<
   Report,
   | "id"
   | "geohash"
+  | "lat"
+  | "lng"
   | "severity"
   | "severity_reason"
   | "hazards"
@@ -56,7 +51,7 @@ export async function fetchActiveReports(limit = MAX_INITIAL_PINS): Promise<Repo
   const { data, error } = await supabase
     .from("reports")
     .select(
-      "id, geohash, severity, severity_reason, hazards, created_at, photo_url, thumbnail_url, status, user_id",
+      "id, geohash, lat, lng, severity, severity_reason, hazards, user_comment, created_at, photo_url, thumbnail_url, status, user_id",
     )
     .eq("status", "active")
     .order("created_at", { ascending: false })

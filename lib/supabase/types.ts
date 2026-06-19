@@ -50,7 +50,14 @@ export type Database = {
           // application/geo+json, otherwise a hex-encoded EWKB string. We type as
           // unknown so callers handle the conversion explicitly.
           location: unknown;
+          // 6-char geohash. Used for the cell-based neighbor index (~1.2 km grid).
+          // NOT for display — use `lat`/`lng` (the exact columns) when you need a
+          // pin position.
           geohash: string;
+          // Exact point mirrored from `location` by a BEFORE INSERT/UPDATE trigger
+          // (migration 0004). Map and detail panel read these directly.
+          lat: number;
+          lng: number;
           photo_url: string;
           thumbnail_url: string | null;
           severity: number;
@@ -72,6 +79,10 @@ export type Database = {
           // WKT format: 'POINT(longitude latitude)' — e.g. 'POINT(-66.1057 18.4655)'
           location: string;
           geohash: string;
+          // Exact lat/lng. The trigger will also derive these from `location` if
+          // you omit them, but writing them explicitly is cheaper and clearer.
+          lat: number;
+          lng: number;
           photo_url: string;
           thumbnail_url?: string | null;
           severity: number;
@@ -92,6 +103,8 @@ export type Database = {
           user_id?: string | null;
           location?: string;
           geohash?: string;
+          lat?: number;
+          lng?: number;
           photo_url?: string;
           thumbnail_url?: string | null;
           severity?: number;

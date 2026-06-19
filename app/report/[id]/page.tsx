@@ -5,7 +5,6 @@ import { ArrowLeft, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { decodeGeohash } from "@/lib/reports/geohash-decoder";
 import { severityStyle } from "@/lib/reports/severity";
 import { createClient } from "@/lib/supabase/server";
 
@@ -78,7 +77,7 @@ export default async function ReportSharePage({
   const { data: report, error } = await supabase
     .from("reports")
     .select(
-      "id, geohash, severity, severity_reason, hazards, user_comment, photo_url, status, created_at",
+      "id, lat, lng, severity, severity_reason, hazards, user_comment, photo_url, status, created_at",
     )
     .eq("id", id)
     .single();
@@ -88,7 +87,6 @@ export default async function ReportSharePage({
   }
 
   const style = severityStyle(report.severity);
-  const latlng = decodeGeohash(report.geohash);
   const submittedDate = new Date(report.created_at);
   const dateLabel = submittedDate.toLocaleDateString("es-PR", {
     day: "numeric",
@@ -167,7 +165,7 @@ export default async function ReportSharePage({
             <div className="flex items-center gap-1.5">
               <MapPin className="size-4" aria-hidden="true" />
               <span className="font-mono">
-                {latlng.lat.toFixed(4)}, {latlng.lng.toFixed(4)}
+                {report.lat.toFixed(4)}, {report.lng.toFixed(4)}
               </span>
             </div>
             <div>Reportado el {dateLabel}</div>

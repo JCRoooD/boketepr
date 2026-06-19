@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { PinDetailPanel } from "@/components/map/PinDetailPanel";
 import { SeverityLegend } from "@/components/map/SeverityLegend";
 import { pinElementProps } from "@/components/map/SeverityPin";
-import { decodeGeohash } from "@/lib/reports/geohash-decoder";
 import {
   ReportPin,
   subscribeToNewReports,
@@ -178,19 +177,16 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
         clickableIcons={false}
         className="h-full w-full"
       >
-        {mergedPins.map((p) => {
-          const { lat, lng } = decodeGeohash(p.geohash);
-          return (
-            <AdvancedMarker
-              key={p.id}
-              position={{ lat, lng }}
-              onClick={() => setSelectedId(p.id)}
-              title={`Severidad ${p.severity.toFixed(1)}`}
-            >
-              <Pin {...pinElementProps(p.severity)} />
-            </AdvancedMarker>
-          );
-        })}
+        {mergedPins.map((p) => (
+          <AdvancedMarker
+            key={p.id}
+            position={{ lat: p.lat, lng: p.lng }}
+            onClick={() => setSelectedId(p.id)}
+            title={`Severidad ${p.severity.toFixed(1)}`}
+          >
+            <Pin {...pinElementProps(p.severity)} />
+          </AdvancedMarker>
+        ))}
       </Map>
 
       <SeverityLegend />
