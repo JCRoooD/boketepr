@@ -192,13 +192,25 @@ console.log("\n=== Phase 2: assertions ===\n");
   );
 }
 
-// Q5: query at anchor, radius=0 → expect []
+// Q5: query at anchor, radius=0 → expect [A] (exact-match boundary, not [])
 {
   const rows = await callRpc(ANCHOR.lat, ANCHOR.lng, 0);
+  const labels = rows.map((r) => r.severity_reason.match(/^\[TEST-NEARBY\] (\w)/)?.[1]).filter(Boolean);
   assert(
-    "Q5: anchor + 0m → [] (boundary)",
+    "Q5: anchor + 0m → [A] only (ST_DWithin(radius=0) is exact-match, not no-match)",
+    rows.length === 1 && labels[0] === "A",
+    `got ${rows.length} row(s): [${labels.join(", ")}]`,
+  );
+}
+
+// Q5b: query 5m east of A, radius=1m → expect [] (negative boundary)
+{
+  const fiveMeast = offset(0, 5);
+  const rows = await callRpc(fiveMeast.lat, fiveMeast.lng, 1);
+  assert(
+    "Q5b: 5m east + 1m radius → [] (tight radius, no overlap)",
     rows.length === 0,
-    `got ${rows.length} rows`,
+    `got ${rows.length} row(s)`,
   );
 }
 
