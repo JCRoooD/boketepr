@@ -62,6 +62,7 @@ Goal 6 (Places):
 
 Goal 7 (Duplicate detection):
 - `lib/db/migrations/0005_add_find_nearby_reports_rpc.sql` — `find_nearby_reports(lat, lng, radius_m, max_results)` RPC, `security invoker` so RLS applies, PostGIS `ST_DWithin` + `ST_Distance` on the geography column
+- `lib/db/migrations/0006_fix_find_nearby_reports_param_shadow.sql` — **important**: renames the IN params to `in_lat`/`in_lng`/`in_radius_m`/`in_max_results` to avoid the Postgres RETURNS TABLE shadow trap (OUT columns of the same name shadow IN params inside the function body). Without this, migration 0005 was broken: `distance_m` always returned 0 and `ST_DWithin` ignored the radius.
 - `lib/reports/queries.ts` — `fetchNearbyReports(lat, lng, radiusMeters = DEFAULT_NEARBY_RADIUS_M)` + `NearbyReport` type
 - `components/report/NearbyReports.tsx` — debounced fetch (250 ms), amber-tinted card with thumbnails + severity badges + distance + relative date, links to `/report/[id]`
 
@@ -69,6 +70,7 @@ Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
 - `scripts/cleanup-e2e.mjs` — purges e2e test users + rows + storage files
 - `scripts/test-score.mjs` — manual smoke test for `scorePothole()`
+- `scripts/test-nearby.mjs` — smoke test for `find_nearby_reports`: seeds 5 active reports at known distances, asserts radius filtering + max_results + ordering + anon-key auth + status='fixed' exclusion + cleanup
 
 ## Language: Spanish (es_PR dialect)
 - All user-facing copy is Spanish, Caribbean dialect (es_PR).
@@ -99,7 +101,7 @@ Tests:
 - DB: **0 reports** in `public.reports` (all e2e test data was cleaned up after the last goal). First real submission via `/submit` will populate the map.
 - Storage: 3 public buckets — `photos`, `thumbnails`, `avatars`
 - Realtime: enabled for `public.reports` (postgres_changes on INSERT + UPDATE)
-- DB RPC: `public.find_nearby_reports(lat, lng, radius_m, max_results)` — added in migration 0005, granted to `anon` + `authenticated`
+- DB RPC: `public.find_nearby_reports(in_lat, in_lng, in_radius_m, in_max_results)` — added in migration 0005, param names fixed in migration 0006 (renamed to break Postgres RETURNS TABLE shadow), granted to `anon` + `authenticated`
 
 ## Open follow-ups (deferred, not bugs)
 - Marking a report "as fixed" via UI is done, but pins don't show a "fixed" badge — they just disappear. Could show a "reparado hace X días" pin in a different color if the user re-opens the report.

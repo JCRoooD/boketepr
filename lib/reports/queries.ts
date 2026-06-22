@@ -68,11 +68,17 @@ export async function fetchNearbyReports(
   maxResults = 5,
 ): Promise<NearbyReport[]> {
   const supabase = createBrowserClient();
+  // Note on param names: the SQL function declares IN params as
+  // `in_lat`, `in_lng`, `in_radius_m`, `in_max_results`. The OUT
+  // columns keep the clean names (`lat`, `lng`, `distance_m`) so the
+  // API response shape is unchanged. Renaming the IN params was
+  // necessary to avoid shadowing the OUT columns inside the function
+  // body — see migration 0006 for details.
   const { data, error } = await supabase.rpc("find_nearby_reports", {
-    lat,
-    lng,
-    radius_m: radiusMeters,
-    max_results: maxResults,
+    in_lat: lat,
+    in_lng: lng,
+    in_radius_m: radiusMeters,
+    in_max_results: maxResults,
   });
 
   if (error) {

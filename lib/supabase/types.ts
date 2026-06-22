@@ -138,10 +138,19 @@ export type Database = {
       // on the geography(point) column with the GiST index from 0001.
       find_nearby_reports: {
         Args: {
-          lat: number;
-          lng: number;
-          radius_m?: number;
-          max_results?: number;
+          // Migration 0006 renamed these IN params from
+          // `lat`/`lng`/`radius_m`/`max_results` to the `in_*`
+          // prefix. The OUT columns (returned to the client) keep
+          // the clean names (`lat`, `lng`, `distance_m`, ...). The
+          // rename was needed to avoid shadowing the OUT columns
+          // inside the function body — Postgres RETURNS TABLE makes
+          // the OUT columns and IN parameters share a namespace, so
+          // when they collide the OUT wins. That bug returned wrong
+          // rows with distance_m = 0 regardless of the query point.
+          in_lat: number;
+          in_lng: number;
+          in_radius_m?: number;
+          in_max_results?: number;
         };
         Returns: Array<{
           id: string;
