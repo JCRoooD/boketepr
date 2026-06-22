@@ -5,6 +5,7 @@ import { useState } from "react";
 import { z } from "zod";
 
 import { LocationInput, type LocationValue } from "@/components/report/LocationInput";
+import { NearbyReports } from "@/components/report/NearbyReports";
 import { PhotoInput } from "@/components/report/PhotoInput";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -248,6 +249,11 @@ export function ReportForm() {
         source={location?.source ?? null}
         onChange={setLocation}
         disabled={submitting}
+      />
+
+      <NearbyReports
+        lat={location?.lat ?? null}
+        lng={location?.lng ?? null}
       />
 
       <div className="flex flex-col gap-1.5">

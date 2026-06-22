@@ -132,7 +132,32 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      // Migration 0005. Powers the duplicate-detection card on /submit:
+      // "Ya hay N reportes cerca de aquí" — backed by PostGIS ST_DWithin
+      // on the geography(point) column with the GiST index from 0001.
+      find_nearby_reports: {
+        Args: {
+          lat: number;
+          lng: number;
+          radius_m?: number;
+          max_results?: number;
+        };
+        Returns: Array<{
+          id: string;
+          lat: number;
+          lng: number;
+          severity: number;
+          severity_reason: string;
+          hazards: string[];
+          user_comment: string | null;
+          created_at: string;
+          photo_url: string;
+          thumbnail_url: string | null;
+          distance_m: number;
+        }>;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

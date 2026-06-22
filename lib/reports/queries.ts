@@ -21,6 +21,68 @@ import type { Report } from "@/lib/supabase/types";
 export const MAX_INITIAL_PINS = 500;
 
 /**
+ * Default radius for the /submit duplicate-detection card, in meters.
+ * 50 m is tight enough that two reports at this distance almost certainly
+ * describe the same physical hoyo (a pothole is 0.5–2 m wide; GPS drift
+ * is ~10–15 m on mobile, up to ~50 m on desktop / WiFi triangulation).
+ * Tunable later once we see real duplicate rates.
+ */
+export const DEFAULT_NEARBY_RADIUS_M = 50;
+
+/**
+ * Subset of a nearby report shown under the "ya hay reportes cerca"
+ * prompt on /submit. Mirrors the columns returned by the
+ * `find_nearby_reports` RPC (migration 0005). Distance is computed
+ * server-side via PostGIS ST_Distance.
+ */
+export type NearbyReport = {
+  id: string;
+  lat: number;
+  lng: number;
+  severity: number;
+  severity_reason: string;
+  hazards: string[];
+  user_comment: string | null;
+  created_at: string;
+  photo_url: string;
+  thumbnail_url: string | null;
+  /** Approx. great-circle distance in meters from the user's chosen point. */
+  distance_m: number;
+};
+
+/**
+ * Fetch up to `maxResults` active reports within `radiusMeters` of the
+ * given point. Backed by PostGIS `ST_DWithin` on the `geography(point)`
+ * column with the GiST index from migration 0001 — no scan, no JS-side
+ * distance math.
+ *
+ * Used by the /submit form to show a duplicate-detection card when the
+ * user has already picked a location. RLS lets anon read active rows,
+ * and the RPC is granted to anon + authenticated, so this works for
+ * both pre- and post-login sessions.
+ */
+export async function fetchNearbyReports(
+  lat: number,
+  lng: number,
+  radiusMeters = DEFAULT_NEARBY_RADIUS_M,
+  maxResults = 5,
+): Promise<NearbyReport[]> {
+  const supabase = createBrowserClient();
+  const { data, error } = await supabase.rpc("find_nearby_reports", {
+    lat,
+    lng,
+    radius_m: radiusMeters,
+    max_results: maxResults,
+  });
+
+  if (error) {
+    console.error("fetchNearbyReports failed", error);
+    return [];
+  }
+  return (data ?? []) as NearbyReport[];
+}
+
+/**
  * Subset of `Report` that the map needs. Excludes large fields (the
  * severity_reason is short, hazards is small, photo_url is a string).
  */

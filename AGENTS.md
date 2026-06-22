@@ -30,6 +30,7 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 4 | AI severity scoring | done | gpt-4o-mini, 1-10 score, Spanish reason + hazards, ~2s per call |
 | 5 | Public live map | done | `/map` with Google Maps, color-coded pins, real-time updates, "mark as fixed" for owner, shareable `/report/[id]` URLs with OG tags |
 | 6 | Places autocomplete | done | "Buscar dirección" on `/submit` — Google Places, PR-only, third option alongside GPS and manual coords |
+| 7 | Duplicate detection | done | After location is picked on `/submit`, nearby active reports within 50 m are shown (PostGIS `ST_DWithin` via `find_nearby_reports` RPC). Informative only — submission is never blocked. |
 
 ## Key files (Goal 4 + 5 + 6)
 
@@ -58,6 +59,11 @@ Goal 5 (API):
 Goal 6 (Places):
 - `components/report/LocationInput.tsx` — three modes: GPS / Places / Manual. `LocationValue` type exported.
 - `app/globals.css` — `.pac-container` / `.pac-item` styled to match the app, z-index 9999
+
+Goal 7 (Duplicate detection):
+- `lib/db/migrations/0005_add_find_nearby_reports_rpc.sql` — `find_nearby_reports(lat, lng, radius_m, max_results)` RPC, `security invoker` so RLS applies, PostGIS `ST_DWithin` + `ST_Distance` on the geography column
+- `lib/reports/queries.ts` — `fetchNearbyReports(lat, lng, radiusMeters = DEFAULT_NEARBY_RADIUS_M)` + `NearbyReport` type
+- `components/report/NearbyReports.tsx` — debounced fetch (250 ms), amber-tinted card with thumbnails + severity badges + distance + relative date, links to `/report/[id]`
 
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
@@ -93,9 +99,9 @@ Tests:
 - DB: **0 reports** in `public.reports` (all e2e test data was cleaned up after the last goal). First real submission via `/submit` will populate the map.
 - Storage: 3 public buckets — `photos`, `thumbnails`, `avatars`
 - Realtime: enabled for `public.reports` (postgres_changes on INSERT + UPDATE)
+- DB RPC: `public.find_nearby_reports(lat, lng, radius_m, max_results)` — added in migration 0005, granted to `anon` + `authenticated`
 
 ## Open follow-ups (deferred, not bugs)
 - Marking a report "as fixed" via UI is done, but pins don't show a "fixed" badge — they just disappear. Could show a "reparado hace X días" pin in a different color if the user re-opens the report.
-- The `/submit` page doesn't show your own previously submitted hoyos. Could add a "tú reportaste esto antes" prompt when a new pin lands near an existing one.
 - No email confirmation on signup (Supabase Auth default behavior, but no custom email template yet).
 - No rate limiting on `/api/reports` — relies on Supabase Storage signed URL TTL + RLS only.
