@@ -62,7 +62,7 @@ Goal 6 (Places):
 
 Goal 7 (Duplicate detection):
 - `lib/db/migrations/0005_add_find_nearby_reports_rpc.sql` — `find_nearby_reports(lat, lng, radius_m, max_results)` RPC, `security invoker` so RLS applies, PostGIS `ST_DWithin` + `ST_Distance` on the geography column
-- `lib/db/migrations/0006_fix_find_nearby_reports_param_shadow.sql` — **important**: renames the IN params to `in_lat`/`in_lng`/`in_radius_m`/`in_max_results` to avoid the Postgres RETURNS TABLE shadow trap (OUT columns of the same name shadow IN params inside the function body). Without this, migration 0005 was broken: `distance_m` always returned 0 and `ST_DWithin` ignored the radius.
+- `lib/db/migrations/0006_fix_find_nearby_reports_param_shadow.sql` — **important**: renames the IN params to `in_lat`/`in_lng`/`in_radius_m`/`in_max_results` to avoid the Postgres RETURNS TABLE shadow trap (OUT columns of the same name shadow IN params inside the function body). Without this, migration 0005 was broken: `distance_m` always returned 0 and `ST_DWithin` ignored the radius. **Postgres refuses to rename IN params via `CREATE OR REPLACE`** (it preserves `proargnames` for callers that reference params by name), so this migration starts with `DROP FUNCTION IF EXISTS` followed by a fresh `CREATE OR REPLACE`.
 - `lib/reports/queries.ts` — `fetchNearbyReports(lat, lng, radiusMeters = DEFAULT_NEARBY_RADIUS_M)` + `NearbyReport` type
 - `components/report/NearbyReports.tsx` — debounced fetch (250 ms), amber-tinted card with thumbnails + severity badges + distance + relative date, links to `/report/[id]`
 

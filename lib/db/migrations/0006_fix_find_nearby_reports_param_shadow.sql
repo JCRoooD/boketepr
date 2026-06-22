@@ -46,7 +46,23 @@
 --   param names. Type definitions in lib/supabase/types.ts updated to
 --   match.
 --
--- Idempotent: re-running is a no-op (CREATE OR REPLACE).
+-- Idempotent: re-running is a no-op (DROP IF EXISTS + CREATE OR REPLACE).
+
+-- =====================================================================
+-- 0. Drop the existing function so we can rename IN parameters.
+--    Postgres refuses to change the names of existing IN parameters
+--    via CREATE OR REPLACE — the names are stored in pg_proc.proargnames
+--    and preserved for callers that reference them by name. The only
+--    way to rename is DROP + CREATE.
+--
+--    The function's ACL (grants to anon + authenticated) is removed by
+--    the DROP and re-applied by the GRANT at the bottom of this file,
+--    so the net effect is the same as a name-preserving replace.
+-- =====================================================================
+
+drop function if exists public.find_nearby_reports(
+  double precision, double precision, double precision, integer
+);
 
 -- =====================================================================
 -- 1. The fixed RPC
