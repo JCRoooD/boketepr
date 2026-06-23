@@ -33,6 +33,7 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 7 | Duplicate detection | done | After location is picked on `/submit`, nearby active reports within 50 m are shown (PostGIS `ST_DWithin` via `find_nearby_reports` RPC). Informative only — submission is never blocked. |
 | 8 | Fixed-pin visibility | done | Migration 0007 adds `reports.fixed_at`. The /map fetches `status='active' OR fixed_at > now()-30d`. Fixed pins render as a green check (SeverityPin.fixedPinElementProps) instead of vanishing. PinDetailPanel shows "Reparado hace X días" and hides severity/hazards/mark-fixed for fixed pins. |
 | 9 | Rate limit on submit | done | POST /api/reports allows 5 submissions per 5-minute window per user. Counted against the `reports` table itself (no separate rate_limits table). Returns 429 + `Retry-After: 300` + Spanish message. Fails open on count-query errors. |
+| 10 | User Profile full | done | `/profile` rewrite: avatar upload (`avatars` bucket, deletes old on replace), edit display name (inline form), stats card (total + active vs fixed + severity buckets), report history list (most recent 20, with thumbnails + status badges + links to `/report/[id]`). New routes: `PATCH /api/profile`, `POST /api/profile/avatar-upload`. |
 
 ## Key files (Goal 4 + 5 + 6)
 
@@ -81,6 +82,16 @@ Goal 8 (Fixed-pin visibility — migration 0007):
 Goal 9 (Rate limit on submit):
 - `app/api/reports/route.ts` — step 2 of POST is a count query (`select count(*) where user_id = :user and created_at > now() - 5 min`), `>= 5` → 429 + `Retry-After: 300`. Fails open on count-query errors.
 
+Goal 10 (User Profile full):
+- `app/(auth)/profile/page.tsx` — server component, composes AvatarUpload + ProfileForm + StatsCard + report history list (most recent 20 reports). Loads profile row + stats + history in parallel via `Promise.all`.
+- `app/api/profile/route.ts` — PATCH `/api/profile`, validates display_name (≤60 chars) + avatar_url (must be on our `avatars` bucket via a `isOurAvatarUrl` check — defense against off-bucket URL injection). RLS owner-only via `profiles_update_self` policy.
+- `app/api/profile/avatar-upload/route.ts` — POST `/api/profile/avatar-upload`, returns a signed upload URL for the `avatars` bucket and deletes the user's old avatar (via service role) so the bucket doesn't fill up with orphans. Validates content type + size server-side.
+- `components/profile/AvatarUpload.tsx` — client component, file picker + camera icon button + local preview via `URL.createObjectURL` + upload progress. 2 MB / JPEG/PNG/WebP limits enforced both client and server side.
+- `components/profile/ProfileForm.tsx` — client component, inline edit-in-place for display name. Calls PATCH `/api/profile` and updates local state on success.
+- `components/profile/StatsCard.tsx` — server component, renders total + active/fixed/reparado counts + a per-bucket severity breakdown that hides empty rows.
+- `components/profile/ReportListItem.tsx` — server component, one row in the history list. Thumbnail + severity + status badge + date + link to `/report/[id]`. Fixed rows show a green ✓ in the corner.
+- `lib/profile/stats.ts` — server-side aggregation, single SELECT that pulls `(status, severity)` for the user's reports and folds them into counts client-side. RLS lets the user read their own rows via `reports_read_all` + `user_id = :me` filter.
+
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
 - `scripts/cleanup-e2e.mjs` — purges e2e test users + rows + storage files
@@ -88,6 +99,7 @@ Tests:
 - `scripts/test-nearby.mjs` — smoke test for `find_nearby_reports`: seeds 5 active reports at known distances, asserts radius filtering + max_results + ordering + anon-key auth + status='fixed' exclusion + cleanup
 - `scripts/test-fixed-pin.mjs` — submits a report, marks it fixed, verifies DB state, verifies the /map query filter includes it; backdates fixed_at to 31 days ago and verifies the filter excludes it
 - `scripts/test-rate-limit.mjs` — submits 5 reports (all succeed), submits a 6th (expects 429 + Spanish error + Retry-After), confirms a second user is unaffected
+- `scripts/test-profile.mjs` — creates a user, reads `/profile` (200 + stats card + email), PATCHes display_name + avatar_url, expects 400 on off-bucket URL + empty PATCH, verifies final DB state
 
 ## Language: Spanish (es_PR dialect)
 - All user-facing copy is Spanish, Caribbean dialect (es_PR).
