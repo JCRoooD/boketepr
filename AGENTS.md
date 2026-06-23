@@ -31,6 +31,8 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 5 | Public live map | done | `/map` with Google Maps, color-coded pins, real-time updates, "mark as fixed" for owner, shareable `/report/[id]` URLs with OG tags |
 | 6 | Places autocomplete | done | "Buscar dirección" on `/submit` — Google Places, PR-only, third option alongside GPS and manual coords |
 | 7 | Duplicate detection | done | After location is picked on `/submit`, nearby active reports within 50 m are shown (PostGIS `ST_DWithin` via `find_nearby_reports` RPC). Informative only — submission is never blocked. |
+| 8 | Fixed-pin visibility | done | Migration 0007 adds `reports.fixed_at`. The /map fetches `status='active' OR fixed_at > now()-30d`. Fixed pins render as a green check (SeverityPin.fixedPinElementProps) instead of vanishing. PinDetailPanel shows "Reparado hace X días" and hides severity/hazards/mark-fixed for fixed pins. |
+| 9 | Rate limit on submit | done | POST /api/reports allows 5 submissions per 5-minute window per user. Counted against the `reports` table itself (no separate rate_limits table). Returns 429 + `Retry-After: 300` + Spanish message. Fails open on count-query errors. |
 
 ## Key files (Goal 4 + 5 + 6)
 
@@ -66,11 +68,26 @@ Goal 7 (Duplicate detection):
 - `lib/reports/queries.ts` — `fetchNearbyReports(lat, lng, radiusMeters = DEFAULT_NEARBY_RADIUS_M)` + `NearbyReport` type
 - `components/report/NearbyReports.tsx` — debounced fetch (250 ms), amber-tinted card with thumbnails + severity badges + distance + relative date, links to `/report/[id]`
 
+Goal 8 (Fixed-pin visibility — migration 0007):
+- `lib/db/migrations/0007_add_reports_fixed_at.sql` — `reports.fixed_at timestamptz NULL`, backfills existing fixed rows from `updated_at`, partial index `reports_fixed_at_idx` (DESC, WHERE status='fixed') for the recent-fixed fetch branch
+- `lib/reports/queries.ts` — adds `fixed_at` to `ReportPin`, `isRecentlyFixed(pin)` helper, `FIXED_PIN_LIFETIME_MS = 30 days`. `fetchActiveReports` switches from `status=active` to `.or("status.eq.active,fixed_at.gt.<cutoff>")` so recently-fixed pins show up
+- `components/map/SeverityPin.tsx` — `fixedPinElementProps()` returns a green pin with a `✓` glyph instead of the severity number
+- `components/map/MapView.tsx` — `visiblePins` filter drops fixed pins past the 30-day window (in-session analogue of the server filter). `setNow()` ticks every 60s so the window stays accurate while the tab is open. Realtime UPDATE handler keeps the row instead of dropping it.
+- `components/map/PinDetailPanel.tsx` — fixed-pin banner ("Reparado hace X días"), hides severity badge / hazards / mark-fixed action
+- `app/api/reports/[id]/fix/route.ts` — sets `fixed_at = now()` in the same UPDATE that flips status
+- `lib/reports/relative-time.ts` — pure helper for "hace X min/h/días/meses/años" used in the panel banner
+- `lib/reports/pin-cache.ts` — bumped `boketepr:pins:v1` → `:v2` (ReportPin shape includes `fixed_at`; old caches discarded cleanly)
+
+Goal 9 (Rate limit on submit):
+- `app/api/reports/route.ts` — step 2 of POST is a count query (`select count(*) where user_id = :user and created_at > now() - 5 min`), `>= 5` → 429 + `Retry-After: 300`. Fails open on count-query errors.
+
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
 - `scripts/cleanup-e2e.mjs` — purges e2e test users + rows + storage files
 - `scripts/test-score.mjs` — manual smoke test for `scorePothole()`
 - `scripts/test-nearby.mjs` — smoke test for `find_nearby_reports`: seeds 5 active reports at known distances, asserts radius filtering + max_results + ordering + anon-key auth + status='fixed' exclusion + cleanup
+- `scripts/test-fixed-pin.mjs` — submits a report, marks it fixed, verifies DB state, verifies the /map query filter includes it; backdates fixed_at to 31 days ago and verifies the filter excludes it
+- `scripts/test-rate-limit.mjs` — submits 5 reports (all succeed), submits a 6th (expects 429 + Spanish error + Retry-After), confirms a second user is unaffected
 
 ## Language: Spanish (es_PR dialect)
 - All user-facing copy is Spanish, Caribbean dialect (es_PR).
@@ -101,9 +118,9 @@ Tests:
 - DB: **0 reports** in `public.reports` (all e2e test data was cleaned up after the last goal). First real submission via `/submit` will populate the map.
 - Storage: 3 public buckets — `photos`, `thumbnails`, `avatars`
 - Realtime: enabled for `public.reports` (postgres_changes on INSERT + UPDATE)
+- DB schema: `public.reports` has `fixed_at timestamptz NULL` (migration 0007). Status='fixed' rows have it set; active rows have NULL.
 - DB RPC: `public.find_nearby_reports(in_lat, in_lng, in_radius_m, in_max_results)` — added in migration 0005, param names fixed in migration 0006 (renamed to break Postgres RETURNS TABLE shadow), granted to `anon` + `authenticated`
+- LocalStorage pin cache: `boketepr:pins:v2` (was `:v1` before migration 0007; old caches discarded on first load)
 
 ## Open follow-ups (deferred, not bugs)
-- Marking a report "as fixed" via UI is done, but pins don't show a "fixed" badge — they just disappear. Could show a "reparado hace X días" pin in a different color if the user re-opens the report.
 - No email confirmation on signup (Supabase Auth default behavior, but no custom email template yet).
-- No rate limiting on `/api/reports` — relies on Supabase Storage signed URL TTL + RLS only.
