@@ -35,7 +35,7 @@ export default function HomePage() {
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button
                 size="lg"
-                render={<Link href="/mapa" />}
+                render={<Link href="/map" />}
                 className="w-full sm:w-auto"
               >
                 <MapPin className="size-4" aria-hidden="true" />
@@ -44,7 +44,7 @@ export default function HomePage() {
               <Button
                 size="lg"
                 variant="outline"
-                render={<Link href="/reportar" />}
+                render={<Link href="/submit" />}
                 className="w-full sm:w-auto"
               >
                 <Camera className="size-4" aria-hidden="true" />
@@ -168,7 +168,7 @@ export default function HomePage() {
               arreglarse. Empieza ahora.
             </p>
             <div className="mt-8">
-              <Button size="lg" render={<Link href="/reportar" />}>
+              <Button size="lg" render={<Link href="/submit" />}>
                 <Camera className="size-4" aria-hidden="true" />
                 Reportar un hoyo
               </Button>
