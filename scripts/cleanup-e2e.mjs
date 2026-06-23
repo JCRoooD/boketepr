@@ -44,8 +44,17 @@ const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const PREFIX = "e2e-test-";
+// Test users are any email in the @boketepr-test.local domain whose
+// local-part starts with one of these prefixes. Each test script uses
+// its own prefix so the cleanup script can target them all without
+// needing to know which test created which user.
+const TEST_PREFIXES = ["e2e-test-", "e2e-fixed-", "e2e-rate-", "e2e-rate-other-"];
 const DOMAIN = "@boketepr-test.local";
+
+function isTestUser(email) {
+  if (!email?.endsWith(DOMAIN)) return false;
+  return TEST_PREFIXES.some((p) => email.startsWith(p));
+}
 
 console.log(
   CONFIRM
@@ -64,7 +73,7 @@ while (true) {
     process.exit(1);
   }
   for (const u of data.users) {
-    if (u.email?.startsWith(PREFIX) && u.email?.endsWith(DOMAIN)) {
+    if (isTestUser(u.email)) {
       testUsers.push(u);
     }
   }
