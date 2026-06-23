@@ -12,18 +12,19 @@ import { createServiceClient } from "@/lib/supabase/service";
  *
  * POST /api/reports now does the following in order:
  *   1. Auth check
- *   2. Parse + zod-validate the body
- *   3. PR bounding box check
- *   4. Sanity-check the photo URL is on our Supabase
- *   5. Geohash + WKT
- *   6. INSERT the report with severity=5.0 placeholder + reason placeholder
+ *   2. Rate limit (5 reports / 5 min per user) — quick win 1c
+ *   3. Parse + zod-validate the body
+ *   4. PR bounding box check
+ *   5. Sanity-check the photo URL is on our Supabase
+ *   6. Geohash + WKT
+ *   7. INSERT the report with severity=5.0 placeholder + reason placeholder
  *      (counter trigger fires; client already paid the round-trip cost)
- *   7. Call OpenAI gpt-4o-mini with the photo URL → real score
- *   8. If scoring succeeded: UPDATE the row with real severity / reason /
+ *   8. Call OpenAI gpt-4o-mini with the photo URL → real score
+ *   9. If scoring succeeded: UPDATE the row with real severity / reason /
  *      hazards / ai_model_version / ai_scored_at
- *   9. If scoring failed: keep the placeholder, log the error, return
+ *  10. If scoring failed: keep the placeholder, log the error, return
  *      what we have (severity=5.0, reason="Pendiente de análisis con IA.")
- *  10. Return the final row to the client
+ *  11. Return the final row to the client
  *
  * Why fold scoring into this route (vs a separate /api/score):
  *   - Single client code path
@@ -39,6 +40,28 @@ import { createServiceClient } from "@/lib/supabase/service";
  * has ai_scored_at=NULL so a future re-score job could pick it up.
  */
 export const maxDuration = 60;
+
+/**
+ * Per-user rate limit on POST /api/reports.
+ *
+ * The threshold is intentionally generous — a real user submitting the
+ * one pothole they drove past today won't notice. The cap exists to
+ * stop (a) accidental resubmit loops from the client, (b) someone
+ * scripting a flood of reports, (c) someone trying to burn our OpenAI
+ * quota by triggering the scoring endpoint rapidly.
+ *
+ * We back the limit with a count query against `reports` itself rather
+ * than a separate `rate_limits` table — the data is already there, no
+ * migration, no extra state to coordinate across Vercel serverless
+ * instances, and the index `reports_user_id_idx` keeps it cheap at our
+ * scale.
+ *
+ * Window: 5 minutes. The window slides naturally (we count rows with
+ * `created_at > now() - 5 min`), so no cleanup is needed — old rows
+ * just fall out of the count as time passes.
+ */
+const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const RATE_LIMIT_MAX_REPORTS = 5;
 
 const Body = z.object({
   photo_url: z.string().url().max(2048),
@@ -61,7 +84,37 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2. Parse + validate the body
+  // 2. Rate limit (per user). Cheap count query; runs BEFORE body
+  //    validation so an attacker can't spam malformed JSON to keep us
+  //    busy. `Retry-After` is in seconds (RFC 7231 §7.1.3).
+  const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+  const { count: recentCount, error: countErr } = await supabase
+    .from("reports")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gt("created_at", windowStart);
+
+  if (countErr) {
+    // Fail OPEN: if the count query errors (transient DB blip), let the
+    // submission through. We'd rather accept a borderline-spammy
+    // submission than block legitimate users when the system hiccups.
+    console.error("rate limit count query failed", countErr);
+  } else if ((recentCount ?? 0) >= RATE_LIMIT_MAX_REPORTS) {
+    return NextResponse.json(
+      {
+        error:
+          "Demasiados reportes en poco tiempo. Espera un momento antes de enviar otro.",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil(RATE_LIMIT_WINDOW_MS / 1000)),
+        },
+      },
+    );
+  }
+
+  // 3. Parse + validate the body
   let json: unknown;
   try {
     json = await request.json();
@@ -85,13 +138,13 @@ export async function POST(request: Request) {
 
   const { photo_url, lat, lng, user_comment } = parsed.data;
 
-  // 3. PR bounding box
+  // 4. PR bounding box
   const bbox = isWithinPR(lat, lng);
   if (!bbox.ok) {
     return NextResponse.json({ error: bbox.reason }, { status: 400 });
   }
 
-  // 4. Sanity-check the photo URL is on our Supabase
+  // 5. Sanity-check the photo URL is on our Supabase
   if (!photo_url.includes("/storage/v1/object/public/photos/")) {
     return NextResponse.json(
       { error: "La foto no es válida. Vuelve a subirla." },
@@ -99,11 +152,11 @@ export async function POST(request: Request) {
     );
   }
 
-  // 5. Geohash + WKT
+  // 6. Geohash + WKT
   const geohash = encodeGeohash(lat, lng);
   const location = wktPoint(lat, lng);
 
-  // 6. Insert the report with placeholder severity.
+  // 7. Insert the report with placeholder severity.
   //    We write lat/lng explicitly here (the trigger would derive them
   //    from `location` if we didn't, but being explicit is cheaper than
   //    relying on the trigger for every insert).
@@ -159,7 +212,7 @@ export async function POST(request: Request) {
     created_at: inserted.created_at,
   };
 
-  // 7. Call OpenAI Vision to score the photo
+  // 8. Call OpenAI Vision to score the photo
   let scored = false;
   let scoreError: string | null = null;
   try {
@@ -170,7 +223,7 @@ export async function POST(request: Request) {
       userComment: user_comment ?? null,
     });
 
-    // 8. Update the row with the real score
+    // 9. Update the row with the real score
     const { data: updated, error: updateErr } = await service
       .from("reports")
       .update({
@@ -206,7 +259,7 @@ export async function POST(request: Request) {
       };
     }
   } catch (err) {
-    // 9. OpenAI call failed — keep the placeholder, log, surface
+    // 10. OpenAI call failed — keep the placeholder, log, surface
     console.error("AI scoring failed", err);
     scoreError = err instanceof Error ? err.message : "unknown";
   }
