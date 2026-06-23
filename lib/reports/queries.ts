@@ -5,8 +5,8 @@ import type { Report } from "@/lib/supabase/types";
  * Report queries used by the public map (Goal 5).
  *
  * The map needs:
- *   - An initial fetch of the most recent ~500 active reports so the page
- *     renders without a blank map.
+ *   - An initial fetch of the most recent ~500 visible reports so the
+ *     page renders without a blank map.
  *   - A Realtime subscription so newly submitted reports appear as pins
  *     without a page reload.
  *
@@ -16,9 +16,25 @@ import type { Report } from "@/lib/supabase/types";
  * is lossy by up to ~600 m. The `geohash` column is still in the
  * ReportPin type (and still in the row) because it backs the cell-based
  * neighbor index, but no UI code reads it for display anymore.
+ *
+ * "Visible" = status='active' OR (status='fixed' AND fixed_at within the
+ * last 30 days). Fixed pins older than 30 days have fallen off the map
+ * (query filter, not deleted — the row is still in the DB).
  */
 
 export const MAX_INITIAL_PINS = 500;
+
+/**
+ * How long fixed pins stay visible on the map as a green check before
+ * falling off. 30 days gives enough time for users who haven't loaded
+ * the map recently to see the most recent repair activity without
+ * cluttering the map indefinitely.
+ *
+ * Note: this is the *display* lifetime. The row stays in the DB
+ * forever — `status='fixed'` rows are filtered out of the map fetch
+ * after this window.
+ */
+export const FIXED_PIN_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * Default radius for the /submit duplicate-detection card, in meters.
@@ -89,8 +105,9 @@ export async function fetchNearbyReports(
 }
 
 /**
- * Subset of `Report` that the map needs. Excludes large fields (the
- * severity_reason is short, hazards is small, photo_url is a string).
+ * Subset of `Report` that the map needs. Includes `status` + `fixed_at`
+ * so the renderer can switch between severity-color (active) and green
+ * check (recently fixed) styling.
  */
 export type ReportPin = Pick<
   Report,
@@ -107,21 +124,47 @@ export type ReportPin = Pick<
   | "thumbnail_url"
   | "status"
   | "user_id"
+  | "fixed_at"
 >;
 
 /**
- * Fetch the most recent active reports for the initial map render.
+ * True when the row is a recently-fixed pin that should still be shown
+ * on the map (green check glyph instead of severity number).
  *
- * Uses the browser client (RLS allows public reads on `reports`).
+ * We compare against a client-side clock — for the initial render
+ * before Realtime kicks in, every client sees a slightly different
+ * threshold, but the discrepancy is at most a few seconds and only
+ * affects the edge case where a pin was fixed exactly 30 days ago.
+ * Acceptable for a UX-only filter.
+ */
+export function isRecentlyFixed(pin: ReportPin, now: number = Date.now()): boolean {
+  if (pin.status !== "fixed") return false;
+  if (!pin.fixed_at) return false;
+  const fixedMs = new Date(pin.fixed_at).getTime();
+  if (Number.isNaN(fixedMs)) return false;
+  return now - fixedMs < FIXED_PIN_LIFETIME_MS;
+}
+
+/**
+ * Fetch the most recent VISIBLE reports for the initial map render.
+ *
+ * "Visible" = status='active' OR (status='fixed' AND fixed_at within the
+ * last 30 days). Fixed pins older than 30 days fall off the map but stay
+ * in the DB (e.g. for /report/[id] share links).
+ *
+ * The `.or()` filter uses PostgREST's OR syntax: `status.eq.active,fixed_at.gt.<iso>`.
+ * RLS allows public reads on `reports`, so no service role needed.
  */
 export async function fetchActiveReports(limit = MAX_INITIAL_PINS): Promise<ReportPin[]> {
   const supabase = createBrowserClient();
+  const cutoffIso = new Date(Date.now() - FIXED_PIN_LIFETIME_MS).toISOString();
   const { data, error } = await supabase
     .from("reports")
     .select(
-      "id, geohash, lat, lng, severity, severity_reason, hazards, user_comment, created_at, photo_url, thumbnail_url, status, user_id",
+      "id, geohash, lat, lng, severity, severity_reason, hazards, user_comment, created_at, photo_url, thumbnail_url, status, user_id, fixed_at",
     )
-    .eq("status", "active")
+    // status=active, OR fixed_at within the lifetime window
+    .or(`status.eq.active,fixed_at.gt.${cutoffIso}`)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -142,9 +185,9 @@ export type ReportsSubscription = {
  * callback receives the new row in the same shape as `ReportPin` (the
  * Realtime payload uses the same column types as the table Row).
  *
- * We filter to `status = 'active'` in the callback to avoid animating in
- * pins that have been retroactively fixed. (We don't yet have a "mark
- * fixed" UI, but T5.8 is in this same goal.)
+ * We filter to `status = 'active'` in the callback so we don't animate
+ * in pins that are already fixed. The pin cache + UPDATE handler take
+ * care of the flip-active-to-fixed transition.
  */
 export function subscribeToNewReports(
   onNew: (row: ReportPin) => void,
@@ -157,8 +200,9 @@ export function subscribeToNewReports(
       { event: "INSERT", schema: "public", table: "reports" },
       (payload) => {
         const row = payload.new as ReportPin & { status?: string };
-        // Only animate in if it's already active (it should be — that's
-        // the default — but a future update flow could change it).
+        // Only animate in if it's active. (Fixed-on-insert is not a
+        // thing today — `status` defaults to 'active' — but the
+        // guard is cheap.)
         if (row.status && row.status !== "active") return;
         onNew(row as ReportPin);
       },
@@ -173,9 +217,15 @@ export function subscribeToNewReports(
 }
 
 /**
- * Subscribe to UPDATEs so we can drop pins when the user marks one as
- * fixed (status flips from 'active' → 'fixed'). The callback receives
- * the updated row.
+ * Subscribe to UPDATEs so we can:
+ *   - Re-render a pin when its severity changes (rare — admin-only)
+ *   - Keep the pin visible (with a green check) when its status flips
+ *     to 'fixed'. Previously the handler filtered the pin out, but
+ *     post-migration-0007 fixed pins stay visible for 30 days.
+ *   - Drop the pin once `fixed_at` is older than the lifetime window.
+ *     The server-side query filter does this for new fetches; the
+ *     client-side handler covers the in-session case (a pin that
+ *     flips fixed → falls-off-30-days-while-the-tab-is-open).
  */
 export function subscribeToReportUpdates(
   onUpdate: (row: ReportPin) => void,

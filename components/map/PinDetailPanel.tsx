@@ -7,22 +7,29 @@ import { ExternalLink, MapPin, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { severityStyle } from "@/lib/reports/severity";
+import { relativeTimeEs } from "@/lib/reports/relative-time";
 import type { ReportPin } from "@/lib/reports/queries";
 
 /**
  * PinDetailPanel — slide-in side panel shown when a user clicks a pin
  * on the /map page.
  *
- * Shows: photo, severity badge, Spanish reason, hazard tags, the
- * geohash decoded to ~coordinates, and a "Reportar como reparado"
- * button if the current user owns this report.
+ * Shows: photo, severity badge (or "Reparado" banner for fixed pins),
+ * Spanish reason, hazard tags, the coordinates, and a "Reportar como
+ * reparado" button if the current user owns an active pin.
  *
  * The "mark as fixed" action:
  *   - Calls POST /api/reports/{id}/fix (Goal 5, T5.8)
- *   - On success, the parent (MapView) updates local state to remove
- *     the pin (and Supabase Realtime will broadcast the UPDATE so other
- *     clients see the same).
+ *   - On success, the parent (MapView) updates local state so the
+ *     pin now renders as a fixed pin (green check) instead of dropping
+ *     it. The Realtime UPDATE subscription does the same for other
+ *     clients.
  *   - On error, shows an inline error message in Spanish.
+ *
+ * After migration 0007, the panel shows "Reparado hace X días"
+ * (using `relativeTimeEs`) when status='fixed' — replacing the old
+ * "Reportado el ..." subtitle in that case. The severity badge stays
+ * (for historical context) but is muted.
  */
 
 export interface PinDetailPanelProps {
@@ -30,7 +37,7 @@ export interface PinDetailPanelProps {
   /** The currently signed-in user id, or null if not signed in. */
   currentUserId: string | null;
   onClose: () => void;
-  /** Called after a successful mark-as-fixed so the parent can update its pin list. */
+  /** Called after a successful mark-as-fixed so the parent can re-render the pin as fixed. */
   onFixed: (reportId: string) => void;
 }
 
@@ -45,12 +52,14 @@ export function PinDetailPanel({
 
   const style = severityStyle(report.severity);
   const isOwner = currentUserId != null && currentUserId === report.user_id;
+  const isFixed = report.status === "fixed";
   const submittedDate = new Date(report.created_at);
   const dateLabel = submittedDate.toLocaleDateString("es-PR", {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
+  const fixedLabel = report.fixed_at ? relativeTimeEs(report.fixed_at) : null;
 
   function handleMarkFixed() {
     setError(null);
@@ -66,9 +75,9 @@ export function PinDetailPanel({
           const body = (await res.json().catch(() => ({}))) as { error?: string };
           throw new Error(body.error ?? "No pudimos marcar el hoyo como reparado.");
         }
-        // Optimistically remove the pin from local state. The Realtime
-        // subscription will also receive the UPDATE; the parent handles
-        // dedup.
+        // Re-render as fixed instead of dropping. The Realtime
+        // subscription will also receive the UPDATE; the parent
+        // handles dedup.
         onFixed(report.id);
         onClose();
       } catch (err) {
@@ -117,33 +126,45 @@ export function PinDetailPanel({
           <img
             src={report.thumbnail_url ?? report.photo_url}
             alt="Foto del hoyo reportado"
-            className="h-full w-full object-cover"
+            className={`h-full w-full object-cover ${isFixed ? "opacity-90" : ""}`}
           />
         </div>
 
         <CardContent className="flex flex-col gap-4 p-4">
-          {/* Severity badge */}
-          <div
-            className={`flex flex-col items-center gap-1 rounded-lg px-4 py-3 ${style.badgeBg}`}
-          >
-            <div className={`text-3xl font-bold ${style.badgeText}`}>
-              {report.severity.toFixed(1)}{" "}
-              <span className="text-xl">/ 10</span>
+          {/* "Reparado" banner — only for fixed pins (migration 0007). */}
+          {isFixed && (
+            <div className="flex flex-col items-center gap-1 rounded-lg bg-green-600 px-4 py-3 text-white">
+              <div className="text-2xl font-bold leading-none">✓</div>
+              <div className="text-sm font-semibold uppercase tracking-wide">
+                Reparado{fixedLabel ? ` ${fixedLabel}` : ""}
+              </div>
             </div>
-            <div
-              className={`text-xs font-semibold uppercase tracking-wide ${style.badgeText}`}
-            >
-              {style.label}
-            </div>
-          </div>
+          )}
 
-          {/* Reason */}
-          {report.severity_reason && (
+          {/* Severity badge — hidden for fixed pins (the green banner above replaces it) */}
+          {!isFixed && (
+            <div
+              className={`flex flex-col items-center gap-1 rounded-lg px-4 py-3 ${style.badgeBg}`}
+            >
+              <div className={`text-3xl font-bold ${style.badgeText}`}>
+                {report.severity.toFixed(1)}{" "}
+                <span className="text-xl">/ 10</span>
+              </div>
+              <div
+                className={`text-xs font-semibold uppercase tracking-wide ${style.badgeText}`}
+              >
+                {style.label}
+              </div>
+            </div>
+          )}
+
+          {/* Reason — hidden for fixed pins (severity context isn't actionable anymore). */}
+          {!isFixed && report.severity_reason && (
             <p className="text-sm text-foreground">{report.severity_reason}</p>
           )}
 
           {/* Hazards */}
-          {report.hazards.length > 0 && (
+          {!isFixed && report.hazards.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {report.hazards.map((h) => (
                 <span
@@ -178,7 +199,8 @@ export function PinDetailPanel({
 
           {/* Actions */}
           <div className="flex flex-col gap-2 border-t border-border pt-3">
-            {isOwner && (
+            {/* Only show "mark fixed" for owners of active pins. */}
+            {isOwner && !isFixed && (
               <Button
                 onClick={handleMarkFixed}
                 disabled={isPending}
@@ -190,9 +212,9 @@ export function PinDetailPanel({
             )}
 
             {/*
-              Shareable URL — for now points to /report/{id}, which is
-              the standalone shareable page (T5.9). The link opens in
-              a new tab so the user doesn't lose the map view.
+              Shareable URL — points to /report/{id}, the standalone
+              shareable page (T5.9). Opens in a new tab so the user
+              doesn't lose the map view.
             */}
             <Button
               variant="outline"

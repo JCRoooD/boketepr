@@ -18,8 +18,10 @@ import { createClient } from "@/lib/supabase/server";
  * Body: none (the id is in the URL).
  *
  * Side effect: a Realtime UPDATE event fires (Goal 5, T5.5), and the
- * /map page's UPDATE subscription will drop the pin from the live map
- * for everyone who's currently looking at it.
+ * /map page's UPDATE subscription will receive it. Since migration
+ * 0007, the map keeps the pin visible (as a green check) for 30 days
+ * after this UPDATE, so the update handler in MapView no longer drops
+ * the row — it just re-renders it with the fixed styling.
  */
 const ParamsSchema = z.object({
   id: z.string().uuid(),
@@ -76,11 +78,15 @@ export async function POST(
     );
   }
 
+  // Set status='fixed' AND fixed_at=now() in one UPDATE so the
+  // Realtime event has both fields atomically (the map renderer needs
+  // both to switch to the green-check glyph).
+  const nowIso = new Date().toISOString();
   const { data: updated, error: updateErr } = await supabase
     .from("reports")
-    .update({ status: "fixed" })
+    .update({ status: "fixed", fixed_at: nowIso })
     .eq("id", id)
-    .select("id, status, updated_at")
+    .select("id, status, fixed_at")
     .single();
 
   if (updateErr || !updated) {
@@ -94,6 +100,6 @@ export async function POST(
   return NextResponse.json({
     id: updated.id,
     status: updated.status,
-    updated_at: updated.updated_at,
+    fixed_at: updated.fixed_at,
   });
 }

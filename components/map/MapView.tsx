@@ -14,8 +14,12 @@ import { Locate, MapPin, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PinDetailPanel } from "@/components/map/PinDetailPanel";
 import { SeverityLegend } from "@/components/map/SeverityLegend";
-import { pinElementProps } from "@/components/map/SeverityPin";
 import {
+  fixedPinElementProps,
+  pinElementProps,
+} from "@/components/map/SeverityPin";
+import {
+  isRecentlyFixed,
   ReportPin,
   subscribeToNewReports,
   subscribeToReportUpdates,
@@ -31,21 +35,28 @@ import {
  * MapView — the live Google Map for the public /map page.
  *
  * Renders a full-viewport Google Map of Puerto Rico with one pin per
- * active report. Pins are color-coded by severity bucket (Leve /
- * Moderado / Severo / Peligroso) using the shared `severityStyle` helper
- * (Goal 5, T5.4).
+ * visible report. Active pins are color-coded by severity bucket (Leve
+ * / Moderado / Severo / Peligroso); recently-fixed pins render as
+ * green checks (migration 0007).
  *
  * Data flow:
- *   1. The page (server component) fetches the most recent 500 active
+ *   1. The page (server component) fetches the most recent 500 visible
  *      reports and passes them in as `initialReports` (no flash of
  *      empty map).
  *   2. On mount, we read the localStorage cache (T5.10) and merge
  *      with initialReports so the offline user still sees something.
  *   3. We open two Realtime subscriptions (T5.5):
- *        - INSERT → animate in the new pin
- *        - UPDATE → drop a pin that was marked 'fixed' by its owner
+ *        - INSERT → animate in the new active pin
+ *        - UPDATE → re-render the pin (now also handles fixed
+ *          status — see below)
  *   4. On pin click, we set `selectedId` and the PinDetailPanel slides
  *      in from the right.
+ *
+ * Since migration 0007 the UPDATE handler does NOT drop fixed pins.
+ * Instead it keeps the row visible (as a green check) for 30 days
+ * after `fixed_at`, then drops it once the row ages out. This avoids
+ * the "things disappear into a void" UX gap that was in the v1
+ * deferred list.
  *
  * If the Google Maps API key is not set (T5.1 — clicky part), we show
  * a setup screen instead of a broken map.
@@ -84,6 +95,7 @@ export function MapView({ initialReports, currentUserId }: MapViewProps) {
 function MapInner({ initialReports, currentUserId }: MapViewProps) {
   const [pins, setPins] = useState<ReportPin[]>(initialReports);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [now, setNow] = useState<number>(() => Date.now());
   const map = useMap();
 
   /*
@@ -117,6 +129,15 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
     return merged;
   }, [pins, cachedPins]);
 
+  // Tick `now` every minute so the 30-day fixed-pin window stays
+  // accurate while the tab is open (a pin fixed in this session can
+  // become stale, or the inverse for a pin that's been on the map a
+  // while). Cheap; one state set per 60s.
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Persist the current pin set to localStorage whenever it changes.
   // (T5.10)
   useEffect(() => {
@@ -134,23 +155,35 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
     return () => sub.unsubscribe();
   }, []);
 
-  // Realtime: drop pins whose status changed to 'fixed'.
+  // Realtime: re-render pins when their row updates.
+  //
+  // Migration 0007 changed this handler:
+  //   - Active → Active: replace the row (e.g. severity correction)
+  //   - Active → Fixed: replace the row; PinDetailPanel + SeverityPin
+  //     will render the green-check variant because `status` is now
+  //     'fixed'. We no longer drop the pin.
+  //   - Fixed → ...: replace the row
+  // The pin falls off the map via the in-session filter below (after
+  // 30 days since fixed_at) OR on the next page load (via the server
+  // query filter).
   useEffect(() => {
     const sub = subscribeToReportUpdates((row) => {
-      setPins((prev) => {
-        if (row.status === "fixed") {
-          return prev.filter((p) => p.id !== row.id);
-        }
-        // Other updates (e.g. severity correction) — replace the row.
-        return prev.map((p) => (p.id === row.id ? row : p));
-      });
+      setPins((prev) => prev.map((p) => (p.id === row.id ? row : p)));
     });
     return () => sub.unsubscribe();
   }, []);
 
+  // Visible pins: drop rows whose 30-day fixed-pin window has aged out
+  // while the tab was open. This is the in-session analogue of the
+  // server-side `fixed_at > now()-30d` filter.
+  const visiblePins = useMemo(
+    () => mergedPins.filter((p) => isRecentlyFixed(p, now) || p.status !== "fixed"),
+    [mergedPins, now],
+  );
+
   const selectedReport = useMemo(
-    () => mergedPins.find((p) => p.id === selectedId) ?? null,
-    [mergedPins, selectedId],
+    () => visiblePins.find((p) => p.id === selectedId) ?? null,
+    [visiblePins, selectedId],
   );
 
   function recenter() {
@@ -159,8 +192,20 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
     map.setZoom(DEFAULT_ZOOM);
   }
 
+  /*
+   * Called after the owner successfully marks a pin as fixed. We
+   * update the local row so it re-renders as a green check
+   * immediately (no flash of empty). The Realtime subscription above
+   * will also receive the UPDATE and call this same path — `map`
+   * keeps the row idempotent.
+   */
   function handleFixed(reportId: string) {
-    setPins((prev) => prev.filter((p) => p.id !== reportId));
+    const nowIso = new Date().toISOString();
+    setPins((prev) =>
+      prev.map((p) =>
+        p.id === reportId ? { ...p, status: "fixed", fixed_at: nowIso } : p,
+      ),
+    );
   }
 
   return (
@@ -177,16 +222,23 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
         clickableIcons={false}
         className="h-full w-full"
       >
-        {mergedPins.map((p) => (
-          <AdvancedMarker
-            key={p.id}
-            position={{ lat: p.lat, lng: p.lng }}
-            onClick={() => setSelectedId(p.id)}
-            title={`Severidad ${p.severity.toFixed(1)}`}
-          >
-            <Pin {...pinElementProps(p.severity)} />
-          </AdvancedMarker>
-        ))}
+        {visiblePins.map((p) => {
+          const isFixed = isRecentlyFixed(p, now);
+          return (
+            <AdvancedMarker
+              key={p.id}
+              position={{ lat: p.lat, lng: p.lng }}
+              onClick={() => setSelectedId(p.id)}
+              title={isFixed ? "Reparado" : `Severidad ${p.severity.toFixed(1)}`}
+            >
+              <Pin
+                {...(isFixed
+                  ? fixedPinElementProps()
+                  : pinElementProps(p.severity))}
+              />
+            </AdvancedMarker>
+          );
+        })}
       </Map>
 
       <SeverityLegend />
@@ -216,8 +268,8 @@ function MapInner({ initialReports, currentUserId }: MapViewProps) {
         </Button>
       </div>
 
-      {/* Empty state (no pins yet) */}
-      {mergedPins.length === 0 && <EmptyStateOverlay />}
+      {/* Empty state (no visible pins) */}
+      {visiblePins.length === 0 && <EmptyStateOverlay />}
 
       {/* Detail panel */}
       {selectedReport && (

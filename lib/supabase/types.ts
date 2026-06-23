@@ -69,6 +69,10 @@ export type Database = {
           updated_at: string;
           ai_model_version: string | null;
           ai_scored_at: string | null;
+          // Migration 0007. NULL when status != 'fixed'. The /map page
+          // shows status='fixed' pins for 30 days after fixed_at, then
+          // they fall off the map.
+          fixed_at: string | null;
           confirm_count: number;
           dispute_count: number;
           submitted_to_dtop: boolean;
@@ -94,6 +98,9 @@ export type Database = {
           updated_at?: string;
           ai_model_version?: string | null;
           ai_scored_at?: string | null;
+          // Always NULL on insert — only set by the /fix route when
+          // status flips to 'fixed'.
+          fixed_at?: string | null;
           confirm_count?: number;
           dispute_count?: number;
           submitted_to_dtop?: boolean;
@@ -116,6 +123,10 @@ export type Database = {
           updated_at?: string;
           ai_model_version?: string | null;
           ai_scored_at?: string | null;
+          // Set this in the same UPDATE that flips status to 'fixed'.
+          // The map uses (fixed_at > now() - 30 days) to decide which
+          // fixed rows to keep visible.
+          fixed_at?: string | null;
           confirm_count?: number;
           dispute_count?: number;
           submitted_to_dtop?: boolean;

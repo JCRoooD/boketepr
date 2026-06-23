@@ -28,3 +28,22 @@ export function pinElementProps(severity: number): PinProps {
     glyphColor: "#ffffff",
   };
 }
+
+/**
+ * Pin styling for a recently-fixed report (migration 0007).
+ *
+ * The map keeps fixed pins visible for 30 days as a small green check
+ * so users see which nearby hoyos have been repaired without needing
+ * to click. After 30 days the pin falls off the map (query filter).
+ *
+ * Color: a darker, more saturated green than "Leve" so it visually
+ * reads as "done" rather than "low severity". White checkmark glyph.
+ */
+export function fixedPinElementProps(): PinProps {
+  return {
+    background: "#16a34a", // green-600
+    borderColor: "#14532d", // green-900
+    glyph: "✓",
+    glyphColor: "#ffffff",
+  };
+}

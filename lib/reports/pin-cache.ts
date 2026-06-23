@@ -9,8 +9,14 @@ import type { ReportPin } from "@/lib/reports/queries";
  * 500 most recent active reports in localStorage gives us a useful
  * "you've seen these before" offline experience for cheap.
  *
- * Storage shape: { v: 1, pins: ReportPin[] } so we can break the
+ * Storage shape: { v: 2, pins: ReportPin[] } so we can break the
  * schema later without crashing on stale caches.
+ *
+ * v2 (migration 0007): `ReportPin` now includes `fixed_at` so the
+ * client can render recently-fixed pins as green checks. Bumping the
+ * version causes any v1-shaped cached pin (missing `fixed_at`) to be
+ * discarded — they'll be re-populated on the next map load via the
+ * server fetch. This is cheaper than trying to migrate in-place.
  *
  * Size budget: 500 pins × ~500 bytes each ≈ 250 KB. localStorage
  * usually allows 5 MB so we're well under.
@@ -23,11 +29,11 @@ import type { ReportPin } from "@/lib/reports/queries";
  * "setState in effect" lint rule.
  */
 
-const CACHE_KEY = "boketepr:pins:v1";
+const CACHE_KEY = "boketepr:pins:v2";
 const MAX_CACHED_PINS = 500;
 
 interface CacheShape {
-  v: 1;
+  v: 2;
   pins: ReportPin[];
   /** ISO timestamp of the last write. Useful for the "last updated" UI later. */
   savedAt: string;
@@ -71,7 +77,7 @@ export function readCachedPins(): readonly ReportPin[] {
       return lastReadResult;
     }
     const parsed = JSON.parse(raw) as CacheShape;
-    lastReadResult = parsed.v === 1 && Array.isArray(parsed.pins) ? parsed.pins : EMPTY_PINS;
+    lastReadResult = parsed.v === 2 && Array.isArray(parsed.pins) ? parsed.pins : EMPTY_PINS;
     return lastReadResult;
   } catch {
     lastReadRaw = null;
@@ -85,7 +91,7 @@ export function writeCachedPins(pins: ReportPin[]): void {
   try {
     const trimmed = pins.slice(0, MAX_CACHED_PINS);
     const payload: CacheShape = {
-      v: 1,
+      v: 2,
       pins: trimmed,
       savedAt: new Date().toISOString(),
     };
