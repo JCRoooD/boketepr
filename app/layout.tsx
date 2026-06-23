@@ -1,8 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { Footer } from "@/components/nav/Footer";
 import { TopNav } from "@/components/nav/TopNav";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { ServiceWorkerRegistrar } from "@/components/pwa/ServiceWorkerRegistrar";
 
 import "./globals.css";
 
@@ -15,6 +17,17 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+// `theme-color` must live in `viewport`, not `metadata`, per the Next.js 16
+// App Router metadata conventions. Putting it under `metadata` either silently
+// no-ops or breaks the type.
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  // Disabling user-scalable would be hostile — a11y win keeping it on.
+};
 
 export const metadata: Metadata = {
   title: {
@@ -33,6 +46,21 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "BoketePR" }],
   creator: "BoketePR",
+  applicationName: "BoketePR",
+  // Apple-specific PWA metadata. iOS Safari reads these, not the web manifest,
+  // for the "Add to Home Screen" name + icon + status bar styling.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "BoketePR",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+  },
   openGraph: {
     type: "website",
     locale: "es_PR",
@@ -68,6 +96,10 @@ export default function RootLayout({
         <TopNav />
         <main className="flex-1">{children}</main>
         <Footer />
+        {/* SW registration is production-only (see component). */}
+        <ServiceWorkerRegistrar />
+        {/* InstallPrompt renders nothing on the server; safe to include here. */}
+        <InstallPrompt />
       </body>
     </html>
   );

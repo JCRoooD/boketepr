@@ -34,6 +34,7 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 8 | Fixed-pin visibility | done | Migration 0007 adds `reports.fixed_at`. The /map fetches `status='active' OR fixed_at > now()-30d`. Fixed pins render as a green check (SeverityPin.fixedPinElementProps) instead of vanishing. PinDetailPanel shows "Reparado hace X días" and hides severity/hazards/mark-fixed for fixed pins. |
 | 9 | Rate limit on submit | done | POST /api/reports allows 5 submissions per 5-minute window per user. Counted against the `reports` table itself (no separate rate_limits table). Returns 429 + `Retry-After: 300` + Spanish message. Fails open on count-query errors. |
 | 10 | User Profile full | done | `/profile` rewrite: avatar upload (`avatars` bucket, deletes old on replace), edit display name (inline form), stats card (total + active vs fixed + severity buckets), report history list (most recent 20, with thumbnails + status badges + links to `/report/[id]`). New routes: `PATCH /api/profile`, `POST /api/profile/avatar-upload`. |
+| 11 | PWA (install + offline) | done | Installable on Android/Chrome (via `beforeinstallprompt`) and iOS Safari (manual Share → Add to Home Screen, with Spanish instructions). Service worker caches the app shell + `/offline` fallback page. Network-first for navigations, stale-while-revalidate for `/_next/*` + `/icons/*`. No offline-submit queue (v1 explicitly didn't promise one). |
 
 ## Key files (Goal 4 + 5 + 6)
 
@@ -92,6 +93,16 @@ Goal 10 (User Profile full):
 - `components/profile/ReportListItem.tsx` — server component, one row in the history list. Thumbnail + severity + status badge + date + link to `/report/[id]`. Fixed rows show a green ✓ in the corner.
 - `lib/profile/stats.ts` — server-side aggregation, single SELECT that pulls `(status, severity)` for the user's reports and folds them into counts client-side. RLS lets the user read their own rows via `reports_read_all` + `user_id = :me` filter.
 
+Goal 11 (PWA):
+- `app/manifest.ts` — `MetadataRoute.Manifest` for BoketePR, `start_url: "/map"`, `display: standalone`, `lang: "es-PR"`, three icons (192/512/maskable). Next.js 16 emits `<link rel="manifest">` automatically and serves at `/manifest.webmanifest`.
+- `public/sw.js` — service worker. Caches `boketepr-shell-v1` shell assets (root + `/map` + manifest + icons + `/offline`). Network-first for navigations (falls back to cached shell, then `/offline`). Stale-while-revalidate for `/_next/*` + `/icons/*`. Pass-through for `/api/*` and cross-origin (Supabase, Google Maps, OpenAI). Activation deletes any other cache version so old deploys don't haunt users.
+- `app/offline/page.tsx` — static fallback page (Spanish). Cached by the SW and served when a navigation request fails AND the requested URL isn't in cache.
+- `components/pwa/InstallPrompt.tsx` — client component. Detects Chrome (listens for `beforeinstallprompt`, fires `prompt()` on tap) vs iOS (renders Share → Add to Home Screen instructions). 30-day localStorage dismissal TTL (`boketepr:install-prompt:dismissed-at`). Hides in standalone mode. Returns null on first render + uses a `setTimeout(0)` deferral to dodge the `react-hooks/set-state-in-effect` lint rule.
+- `components/pwa/ServiceWorkerRegistrar.tsx` — production-only SW registration (`/sw.js`, scope `/`). Skipped in dev to avoid HMR-vs-SW cache fights.
+- `app/layout.tsx` — adds `viewport.themeColor: "#0a0a0a"`, `metadata.appleWebApp` (capable + title + status-bar-style), `metadata.icons` (192 + 512 + apple-touch). Mounts `InstallPrompt` + `ServiceWorkerRegistrar` in `<body>`.
+- `scripts/generate-pwa-icons.mjs` — renders SVG sources (`scripts/icon-source.svg`, `scripts/icon-maskable.svg`) into `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable.png`, `apple-touch-icon.png`, plus a `app/favicon.ico` (32x32 placeholder) using `sharp` (already a transitive dep). Run once after a logo change.
+- `public/icons/*` — generated PNGs. Sunburst glyph (matches the TopNav logo) on a black rounded-square background.
+
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
 - `scripts/cleanup-e2e.mjs` — purges e2e test users + rows + storage files
@@ -133,6 +144,11 @@ Tests:
 - DB schema: `public.reports` has `fixed_at timestamptz NULL` (migration 0007). Status='fixed' rows have it set; active rows have NULL.
 - DB RPC: `public.find_nearby_reports(in_lat, in_lng, in_radius_m, in_max_results)` — added in migration 0005, param names fixed in migration 0006 (renamed to break Postgres RETURNS TABLE shadow), granted to `anon` + `authenticated`
 - LocalStorage pin cache: `boketepr:pins:v2` (was `:v1` before migration 0007; old caches discarded on first load)
+- PWA: `/manifest.webmanifest` returns valid JSON (verified locally with `curl`). `/sw.js` served at root scope. Install prompt surfaces on `/` after first paint via `components/pwa/InstallPrompt`. SW is registered production-only (dev mode skips it).
+- Install prompt dismissal flag: `boketepr:install-prompt:dismissed-at` in localStorage, 30-day TTL.
 
 ## Open follow-ups (deferred, not bugs)
 - No email confirmation on signup (Supabase Auth default behavior, but no custom email template yet).
+- No PWA install UX tests — InstallPrompt relies on the browser's `beforeinstallprompt` event which is hard to assert in CI. Manual verification: open `boketepr.vercel.app` in Chrome desktop → "Install" icon should appear in the URL bar; on Android Chrome → install banner appears after 2–3 visits. On iOS Safari → Share → Add to Home Screen works with the icon we ship.
+- No automated screenshot test of the PWA icons in the install dialog (Chromium's installer doesn't expose this via Playwright without manual flag).
+- No offline-submit queue — v1 explicitly didn't promise this; the plan said "If a user submits with no internet, the form shows an error and they retry." If we ever add this, the SW would need to capture the POST in a `Background Sync` registration and replay it.

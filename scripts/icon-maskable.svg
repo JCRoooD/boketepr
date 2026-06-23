@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maskable: full bleed black, glyph safely inside central 80% -->
+  <rect width="512" height="512" fill="#0a0a0a"/>
+  <g stroke="#ffffff" stroke-width="18" stroke-linecap="round" fill="none">
+    <line x1="256" y1="156" x2="256" y2="206"/>
+    <line x1="256" y1="306" x2="256" y2="356"/>
+    <line x1="156" y1="256" x2="206" y2="256"/>
+    <line x1="306" y1="256" x2="356" y2="256"/>
+    <line x1="188" y1="188" x2="224" y2="224"/>
+    <line x1="288" y1="288" x2="324" y2="324"/>
+    <line x1="188" y1="324" x2="224" y2="288"/>
+    <line x1="288" y1="224" x2="324" y2="188"/>
+  </g>
+  <circle cx="256" cy="256" r="32" fill="none" stroke="#ffffff" stroke-width="18"/>
+  <circle cx="256" cy="256" r="9" fill="#ffffff"/>
+</svg>
