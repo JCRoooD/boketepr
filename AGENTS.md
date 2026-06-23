@@ -35,6 +35,7 @@ Note: the plan called for Next.js 15, but `create-next-app@latest` installed 16.
 | 9 | Rate limit on submit | done | POST /api/reports allows 5 submissions per 5-minute window per user. Counted against the `reports` table itself (no separate rate_limits table). Returns 429 + `Retry-After: 300` + Spanish message. Fails open on count-query errors. |
 | 10 | User Profile full | done | `/profile` rewrite: avatar upload (`avatars` bucket, deletes old on replace), edit display name (inline form), stats card (total + active vs fixed + severity buckets), report history list (most recent 20, with thumbnails + status badges + links to `/report/[id]`). New routes: `PATCH /api/profile`, `POST /api/profile/avatar-upload`. |
 | 11 | PWA (install + offline) | done | Installable on Android/Chrome (via `beforeinstallprompt`) and iOS Safari (manual Share → Add to Home Screen, with Spanish instructions). Service worker caches the app shell + `/offline` fallback page. Network-first for navigations, stale-while-revalidate for `/_next/*` + `/icons/*`. No offline-submit queue (v1 explicitly didn't promise one). |
+| 12 | OG image for /report/[id] | done | Dynamic `opengraph-image.tsx` (Next.js 16 file convention) generates a 1200x630 PNG per report via `next/og` ImageResponse. Single-column typographic card (Geist Regular + Satori): BoketePR brand + optional "Reparado hace X" pill + colored severity badge (score + bucket label) + Spanish reason (truncated to 180 chars) + lat/lng + relative time. The page's `generateMetadata` no longer sets `images` (the colocal file generates the OG tags automatically). Fallback card for missing/deleted IDs. |
 
 ## Key files (Goal 4 + 5 + 6)
 
@@ -103,6 +104,12 @@ Goal 11 (PWA):
 - `scripts/generate-pwa-icons.mjs` — renders SVG sources (`scripts/icon-source.svg`, `scripts/icon-maskable.svg`) into `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable.png`, `apple-touch-icon.png`, plus a `app/favicon.ico` (32x32 placeholder) using `sharp` (already a transitive dep). Run once after a logo change.
 - `public/icons/*` — generated PNGs. Sunburst glyph (matches the TopNav logo) on a black rounded-square background.
 
+Goal 12 (Dynamic OG image):
+- `app/report/[id]/opengraph-image.tsx` — Next.js 16 file convention. `ImageResponse` from `next/og`, 1200x630 PNG, Geist Regular font (only font bundled with `next/dist/compiled/@vercel/og/`; Geist-SemiBold doesn't ship). Single-column stacked layout (Satori is strict about flex containers with multiple children needing explicit `display` and refuses arbitrary `position: absolute` overlays — earlier attempts with a two-column photo-on-left + overlay tripped an error). Card shows BoketePR brand mark (CSS square, no glyph) + optional "Reparado hace X" pill (white dot + green pill, for fixed reports) + colored severity badge (bucket color from `severity.ts`, large score + bucket label) + Spanish reason (`severity_reason`, truncated to 180 chars at word boundary) + lat/lng + relative time. Falls back to a neutral BoketePR card if the report row is missing.
+- `app/report/[id]/page.tsx` — `generateMetadata` no longer sets `images` directly; the colocal `opengraph-image.tsx` emits `<meta property="og:image">` + `<meta name="twitter:image">` tags automatically with the richer 1200x630 card.
+- Why `dynamic = "force-dynamic"`: report IDs are unique, can't be pre-enumerated at build time. Why `runtime = "nodejs"`: `ImageResponse` + `readFile` for the bundled font.
+- Why no decorative glyphs (`✦`, `✓`): Geist Regular doesn't ship them and Satori's dynamic font fetcher 400s on rare codepoints. Pure CSS brand mark + filled-circle status dot.
+
 Tests:
 - `scripts/e2e-submit.mjs` — full e2e (signup → upload → report → DB check → AI scoring assert)
 - `scripts/cleanup-e2e.mjs` — purges e2e test users + rows + storage files
@@ -146,9 +153,12 @@ Tests:
 - LocalStorage pin cache: `boketepr:pins:v2` (was `:v1` before migration 0007; old caches discarded on first load)
 - PWA: `/manifest.webmanifest` returns valid JSON (verified locally with `curl`). `/sw.js` served at root scope. Install prompt surfaces on `/` after first paint via `components/pwa/InstallPrompt`. SW is registered production-only (dev mode skips it).
 - Install prompt dismissal flag: `boketepr:install-prompt:dismissed-at` in localStorage, 30-day TTL.
+- OG image endpoint: `/report/[id]/opengraph-image` serves a dynamic 1200x630 PNG (verified locally: 55 KB for a real fixed report, 31 KB for the missing-ID fallback). Next.js emits `<meta property="og:image">` + `<meta name="twitter:image">` tags pointing at this route.
 
 ## Open follow-ups (deferred, not bugs)
 - No email confirmation on signup (Supabase Auth default behavior, but no custom email template yet).
 - No PWA install UX tests — InstallPrompt relies on the browser's `beforeinstallprompt` event which is hard to assert in CI. Manual verification: open `boketepr.vercel.app` in Chrome desktop → "Install" icon should appear in the URL bar; on Android Chrome → install banner appears after 2–3 visits. On iOS Safari → Share → Add to Home Screen works with the icon we ship.
 - No automated screenshot test of the PWA icons in the install dialog (Chromium's installer doesn't expose this via Playwright without manual flag).
 - No offline-submit queue — v1 explicitly didn't promise this; the plan said "If a user submits with no internet, the form shows an error and they retry." If we ever add this, the SW would need to capture the POST in a `Background Sync` registration and replay it.
+- OG image is text-only (no photo). Satori (the OG renderer) is strict about absolute-positioned overlays and the only font it bundles doesn't ship the rare-codepoint glyphs we'd want for the photo overlay. The share page itself still shows the full photo; only the preview is typographic. If we want a photo in the preview, we'd need to either (a) bundle a custom font with the glyphs and write a more constrained layout, or (b) move to a static-rendered PNG pipeline (sharp + canvas) instead of Satori.
+- No `generateImageMetadata` for multiple images per report (Twitter prefers one large image; not a current need).

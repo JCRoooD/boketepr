@@ -53,16 +53,23 @@ export async function generateMetadata({
     title,
     description,
     openGraph: {
+      // `images` is intentionally omitted — the colocal
+      // `app/report/[id]/opengraph-image.tsx` file convention generates the
+      // `<meta property="og:image">` tags automatically with a richer
+      // 1200x630 card (severity badge + bucket + reason). Adding a plain
+      // `images` here would either shadow or duplicate that, depending on
+      // the order Next.js merges them.
       type: "article",
       title,
       description,
-      images: data.photo_url ? [{ url: data.photo_url }] : undefined,
     },
     twitter: {
+      // Same reasoning — the `twitter-image.tsx` colocal file would
+      // duplicate this if added; we let `opengraph-image.tsx` cover both
+      // because Twitter `summary_large_image` reads any `og:image` first.
       card: "summary_large_image",
       title,
       description,
-      images: data.photo_url ? [data.photo_url] : undefined,
     },
   };
 }
