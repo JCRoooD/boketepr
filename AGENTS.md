@@ -153,7 +153,8 @@ Tests:
 - LocalStorage pin cache: `boketepr:pins:v2` (was `:v1` before migration 0007; old caches discarded on first load)
 - PWA: `/manifest.webmanifest` returns valid JSON (verified locally with `curl`). `/sw.js` served at root scope. Install prompt surfaces on `/` after first paint via `components/pwa/InstallPrompt`. SW is registered production-only (dev mode skips it).
 - Install prompt dismissal flag: `boketepr:install-prompt:dismissed-at` in localStorage, 30-day TTL.
-- OG image endpoint: `/report/[id]/opengraph-image` serves a dynamic 1200x630 PNG (verified locally: 55 KB for a real fixed report, 31 KB for the missing-ID fallback). Next.js emits `<meta property="og:image">` + `<meta name="twitter:image">` tags pointing at this route.
+- OG image endpoint: `/report/[id]/opengraph-image` serves a dynamic 1200x630 PNG (verified locally: 55 KB for a real fixed report, 31 KB for the missing-ID fallback; verified live on Vercel after manual redeploy: 200 OK + `image/png`, ~31 KB fallback card, share page emits `og:image` + `og:image:type` + `og:image:width=1200` + `twitter:image` tags pointing at `/report/[id]/opengraph-image`). Next.js emits those tags automatically from the colocal file convention.
+- Vercel auto-deploy status: **questionable** — git push of `f9bfd9b` did not trigger an auto-deploy (Vercel's GitHub webhook appears to have missed it; production was still on `94cb754` until we manually redeployed). A noop commit was pushed next to test whether the webhook has recovered. If auto-deploy works again, this note can be removed. If not, the project needs `Settings → Git → Disconnect` + reconnect to re-establish the webhook.
 
 ## Open follow-ups (deferred, not bugs)
 - No email confirmation on signup (Supabase Auth default behavior, but no custom email template yet).
