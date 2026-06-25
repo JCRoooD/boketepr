@@ -115,8 +115,12 @@ describe("SCORE_SCHEMA (OpenAI strict-mode rules)", () => {
 });
 
 describe("HAZARD_VOCABULARY_HINT", () => {
-  it("is a non-empty comma-separated string", () => {
+  it("is a non-empty comma-separated string of Spanish phrases", () => {
     assert.ok(HAZARD_VOCABULARY_HINT.length > 50);
-    assert.match(HAZARD_VOCABULARY_HINT, /^[a-z_,\s]+$/);
+    // Spanish phrases — each comma-separated item starts with an uppercase
+    // letter (some have accents). The list is a *suggestion* to the model,
+    // not a closed enum, so we only assert shape, not membership.
+    assert.match(HAZARD_VOCABULARY_HINT, /^[A-ZÁÉÍÓÚÑ]/);
+    assert.ok(HAZARD_VOCABULARY_HINT.includes(","));
   });
 });

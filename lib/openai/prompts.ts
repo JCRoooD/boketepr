@@ -9,10 +9,33 @@
  * strict mode), so the model literally cannot return a malformed object.
  */
 
+/**
+ * Suggested hazard vocabulary — Spanish phrases (title case, with
+ * accents) the model should prefer when describing a hoyo's context.
+ *
+ * This is a *suggestion*, not a closed set. The model may emit other
+ * Spanish hazard phrases if the photo shows something we didn't
+ * anticipate; the display layer (`lib/reports/hazard-labels.ts`)
+ * prettifies any snake_case token that slips through, and falls back
+ * to title-case for anything else.
+ *
+ * Why the list moved from snake_case tokens to Spanish phrases:
+ *   - Old version asked for `trafico_alto`, which made the structured
+ *     data clean but leaked programmer-speak into every UI that
+ *     showed hazards (snake_case in the submit success card, the
+ *     pin detail panel, the share page, etc.).
+ *   - New version asks for natural Spanish. The `hazardLabels()`
+ *     display function still understands the legacy tokens so old
+ *     rows stay readable after upgrade.
+ *
+ * Keep this list small and high-signal. A long vocab pulls the model
+ * toward over-fitting (it'll emit hazards that aren't really
+ * visible in the photo).
+ */
 export const HAZARD_VOCABULARY_HINT =
-  "trafico_alto, trafico_bajo, carretera_principal, calle_residencial, " +
-  "cerca_escuela, cerca_hospital, en_curva, obscuro, mojado, " +
-  "bordes_afilados, multiple_hoyos, senalizado";
+  "Tráfico alto, Tráfico bajo, Carretera principal, Calle residencial, " +
+  "Cerca de escuela, Cerca de hospital, En curva, Obscuro / poca luz, " +
+  "Mojado, Bordes afilados, Múltiples hoyos, Señalizado";
 
 /**
  * System prompt — the model's "job description".
@@ -34,8 +57,9 @@ FACTORES A CONSIDERAR (en orden de importancia):
 4. Entorno: zonas escolares, hospitales, curvas ciegas, baja visibilidad = más severo.
 5. Condiciones observables: agua acumulada (el hoyo podría ser más profundo de lo que se ve), bordes afilados, vehículos dañados cerca.
 
-HAZARDS (lista corta, en español, separadas por coma, vocabulario sugerido: ${HAZARD_VOCABULARY_HINT}):
+HAZARDS (lista corta, en español de Puerto Rico, separadas por coma; vocabulario sugerido: ${HAZARD_VOCABULARY_HINT}):
 - Solo incluye hazards que puedas observar en la foto. Si la foto no muestra evidencia clara, devuelve [].
+- Usa frases cortas en español natural (ej. "Tráfico alto", "Bordes afilados"), no palabras en snake_case. Si el hoyo está en una zona escolar, di "Cerca de escuela"; si está mojado, di "Mojado".
 
 INSTRUCCIONES DE RESPUESTA:
 - severity: número entre 1.0 y 10.0, con un decimal. Sé conservador: si dudas entre dos valores, usa el menor.

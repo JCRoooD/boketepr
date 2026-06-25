@@ -7,6 +7,7 @@ import { ExternalLink, MapPin, Wrench, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { severityStyle } from "@/lib/reports/severity";
+import { hazardLabels } from "@/lib/reports/hazard-labels";
 import { relativeTimeEs } from "@/lib/reports/relative-time";
 import type { ReportPin } from "@/lib/reports/queries";
 
@@ -163,15 +164,15 @@ export function PinDetailPanel({
             <p className="text-sm text-foreground">{report.severity_reason}</p>
           )}
 
-          {/* Hazards */}
+          {/* Hazards — prettified snake_case tokens to Spanish phrases */}
           {!isFixed && report.hazards.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {report.hazards.map((h) => (
+              {hazardLabels(report.hazards).map((label) => (
                 <span
-                  key={h}
+                  key={label}
                   className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                 >
-                  {h}
+                  {label}
                 </span>
               ))}
             </div>

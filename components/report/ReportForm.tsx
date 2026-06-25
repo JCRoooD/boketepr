@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { severityStyle } from "@/lib/reports/severity";
+import { hazardLabels } from "@/lib/reports/hazard-labels";
 import { createClient } from "@/lib/supabase/client";
 
 /**
@@ -188,15 +189,15 @@ export function ReportForm() {
             <p className="text-sm text-foreground">{r.severity_reason}</p>
           )}
 
-          {/* Hazards as tags */}
+          {/* Hazards as tags — prettified from snake_case tokens to Spanish phrases */}
           {scored && r.hazards.length > 0 && (
             <div className="flex flex-wrap justify-center gap-1.5">
-              {r.hazards.map((h) => (
+              {hazardLabels(r.hazards).map((label) => (
                 <span
-                  key={h}
+                  key={label}
                   className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs text-muted-foreground"
                 >
-                  {h}
+                  {label}
                 </span>
               ))}
             </div>
