@@ -5,6 +5,7 @@ import { ArrowLeft, MapPin } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ShareButton } from "@/components/report/ShareButton";
 import { severityStyle } from "@/lib/reports/severity";
 import { hazardLabels } from "@/lib/reports/hazard-labels";
 import { createClient } from "@/lib/supabase/server";
@@ -104,11 +105,16 @@ export default async function ReportSharePage({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6">
-      <div>
+      <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" size="sm" render={<Link href="/map" />}>
           <ArrowLeft className="mr-2 size-4" />
           Volver al mapa
         </Button>
+        <ShareButton
+          path={`/report/${id}`}
+          title={`Hoyo ${style.label.toLowerCase()} (${report.severity.toFixed(1)}/10) · BoketePR`}
+          text={`Mira este hoyo reportado en Puerto Rico: ${report.severity_reason || "Severidad " + report.severity.toFixed(1) + "/10"}`}
+        />
       </div>
 
       <Card>
