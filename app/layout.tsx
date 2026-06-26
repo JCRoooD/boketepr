@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
 
 import { Footer } from "@/components/nav/Footer";
 import { TopNav } from "@/components/nav/TopNav";
@@ -100,6 +101,11 @@ export default function RootLayout({
         <ServiceWorkerRegistrar />
         {/* InstallPrompt renders nothing on the server; safe to include here. */}
         <InstallPrompt />
+        {/* Vercel Analytics: page views, custom events, Web Vitals.
+            Free on the Vercel hobby plan; no env vars needed for the
+            basic integration (the project id is auto-detected from
+            Vercel deployment context). */}
+        <Analytics />
       </body>
     </html>
   );
