@@ -9,9 +9,14 @@ import { cn } from "@/lib/utils";
 /**
  * PhotoInput
  *
- * Hidden <input type="file" accept="image/*" capture="environment"> driven
- * by a visible button. The `capture` attribute hints mobile browsers to
- * open the rear camera directly (vs the photo library).
+ * Hidden <input type="file" accept="image/*"> driven by a visible button.
+ * Deliberately omits the `capture` attribute so mobile browsers show their
+ * native picker: iOS Safari pops an action sheet with "Take Photo / Photo
+ * Library / Choose File", Android Chrome shows "Camera / Files". Desktop
+ * browsers get the standard file dialog.
+ *
+ * (Setting `capture="environment"` would force the camera only — useful
+ * for "snap and submit" flows but blocks the gallery path.)
  *
  * Props:
  *   - value: File | null
@@ -106,7 +111,6 @@ export function PhotoInput({
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-        capture="environment"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
