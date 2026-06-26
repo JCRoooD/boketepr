@@ -18,6 +18,13 @@ import { cn } from "@/lib/utils";
  * (Setting `capture="environment"` would force the camera only — useful
  * for "snap and submit" flows but blocks the gallery path.)
  *
+ * Note on the accept list: HEIC/HEIF are listed for iOS Safari, which
+ * decodes them natively; Chrome/Edge on desktop can't decode them and
+ * the submit step will reject an .heic upload with a generic browser
+ * error. The normal mobile flow (Take Photo / Photo Library on iOS) always
+ * produces JPEG, so this is a desktop-only edge case — left documented
+ * rather than re-encoding client-side.
+ *
  * Props:
  *   - value: File | null
  *   - onChange: (file: File | null) => void
