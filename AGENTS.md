@@ -189,6 +189,6 @@ Full audit report + remediation plan: `C:\Users\juanc\.hermes\plans\2026-06-26_1
 - 0005 — find_nearby_reports() RPC
 - 0006 — fixed find_nearby_reports RETURNS TABLE shadow
 - 0007 — reports.fixed_at
-- 0008 — hardened find_nearby_reports (revoke anon grant, add bound checks). **Partial apply** — see 0008b.
-- 0008b — explicit REVOKE FROM anon for find_nearby_reports. Needed because 0008's `REVOKE FROM public` didn't strip the explicit `anon` grant from migration 0005/0006. Postgres ACL gotcha: named-role grants survive `REVOKE FROM public`. **Needs user to run.**
-- 0009 — restricted profiles_read_all (require `auth.uid() IS NOT NULL`).
+- 0008 — hardened find_nearby_reports (revoke anon grant, add bound checks). **Patched post-apply** with explicit `REVOKE FROM anon / authenticated` so fresh-DB applies self-correct.
+- 0008b — explicit REVOKE FROM anon for find_nearby_reports. Corrective for the partial apply of 0008. **Applied 2026-06-26.** Verified: anon RPC now gets `permission denied for function find_nearby_reports`. Service-role still works. `routine_privileges` shows exactly `authenticated` + `postgres` + `service_role` (no `anon`).
+- 0009 — restricted profiles_read_all (require `auth.uid() IS NOT NULL`). **Applied 2026-06-26.** Verified: anon SELECT FROM profiles returns 0 rows.

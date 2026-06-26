@@ -36,8 +36,12 @@ grant execute on function public.find_nearby_reports(
   double precision, double precision, double precision, integer
 ) to authenticated;
 
--- 3. Sanity check: this query should show exactly 1 row (authenticated).
---    If it shows 2 (anon + authenticated), the revoke didn't take.
+-- 3. Sanity check: this query should show 3 rows: `authenticated`
+--    (the intended grantee), `postgres` (the superuser — Postgres
+--    always grants EXECUTE to itself), and `service_role` (Supabase's
+--    internal admin role — also a default). The KEY thing to verify
+--    is that `anon` is NOT in the list. If `anon` appears, the revoke
+--    didn't take.
 select
   grantee,
   privilege_type
