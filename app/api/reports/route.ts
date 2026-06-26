@@ -5,7 +5,7 @@ import { scorePothole } from "@/lib/openai/score-pothole";
 import { encodeGeohash } from "@/lib/geo/geohash";
 import { isWithinPR, wktPoint } from "@/lib/geo/pr-bbox";
 import { createClient } from "@/lib/supabase/server";
-import { createServiceClient } from "@/lib/supabase/service";
+import { isOurPhotoUrl } from "@/lib/security/photo-url";
 
 /**
  * Goal 4 — AI Severity Scoring.
@@ -15,15 +15,19 @@ import { createServiceClient } from "@/lib/supabase/service";
  *   2. Rate limit (5 reports / 5 min per user) — quick win 1c
  *   3. Parse + zod-validate the body
  *   4. PR bounding box check
- *   5. Sanity-check the photo URL is on our Supabase
+ *   5. Strict photo-URL check: must be on our Supabase storage
+ *      `photos` bucket AND in the caller's own user_id folder.
+ *      (Previously a substring check — trivially bypassable. SEC-004.)
  *   6. Geohash + WKT
  *   7. INSERT the report with severity=5.0 placeholder + reason placeholder
- *      (counter trigger fires; client already paid the round-trip cost)
+ *      via the anon client so RLS `reports_insert_authed` enforces
+ *      `auth.uid() = user_id`. (Previously used service-role which
+ *      bypassed RLS — SEC-001 critical.)
  *   8. Call OpenAI gpt-4o-mini with the photo URL → real score
- *   9. If scoring succeeded: UPDATE the row with real severity / reason /
- *      hazards / ai_model_version / ai_scored_at
+ *   9. If scoring succeeded: UPDATE the row via anon client so RLS
+ *      `reports_update_owner` enforces ownership. (Same SEC-001 fix.)
  *  10. If scoring failed: keep the placeholder, log the error, return
- *      what we have (severity=5.0, reason="Pendiente de análisis con IA.")
+ *      a static error code (no internal error message leakage — SEC-013).
  *  11. Return the final row to the client
  *
  * Why fold scoring into this route (vs a separate /api/score):
@@ -71,7 +75,7 @@ const Body = z.object({
 });
 
 export async function POST(request: Request) {
-  // 1. Auth check
+  // 1. Auth check (uses anon-key server client; reads auth cookies).
   const supabase = await createClient();
   const {
     data: { user },
@@ -144,8 +148,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: bbox.reason }, { status: 400 });
   }
 
-  // 5. Sanity-check the photo URL is on our Supabase
-  if (!photo_url.includes("/storage/v1/object/public/photos/")) {
+  // 5. Strict photo-URL check.
+  //    The URL must:
+  //      - parse as a valid URL
+  //      - point to our Supabase host (not any other domain)
+  //      - live under /storage/v1/object/public/photos/
+  //      - point to a path that starts with the caller's user_id folder
+  //    The user_id check is defense-in-depth: even if the public bucket
+  //    were to be mis-configured, an attacker can't make us store a URL
+  //    that points to a file under another user's folder.
+  if (!isOurPhotoUrl(photo_url, user.id)) {
     return NextResponse.json(
       { error: "La foto no es válida. Vuelve a subirla." },
       { status: 400 },
@@ -157,11 +169,10 @@ export async function POST(request: Request) {
   const location = wktPoint(lat, lng);
 
   // 7. Insert the report with placeholder severity.
-  //    We write lat/lng explicitly here (the trigger would derive them
-  //    from `location` if we didn't, but being explicit is cheaper than
-  //    relying on the trigger for every insert).
-  const service = createServiceClient();
-  const { data: inserted, error: insertErr } = await service
+  //    Uses the anon-key server client so the `reports_insert_authed`
+  //    RLS policy enforces `auth.uid() = user_id`. If a future code
+  //    change tries to insert with someone else's user_id, RLS rejects.
+  const { data: inserted, error: insertErr } = await supabase
     .from("reports")
     .insert({
       user_id: user.id,
@@ -223,8 +234,12 @@ export async function POST(request: Request) {
       userComment: user_comment ?? null,
     });
 
-    // 9. Update the row with the real score
-    const { data: updated, error: updateErr } = await service
+    // 9. Update the row with the real score.
+    //    Uses the anon-key server client so `reports_update_owner`
+    //    RLS enforces `auth.uid() = user_id`. Defense in depth: even
+    //    if a future bug tries to UPDATE a row that isn't owned by
+    //    the caller, RLS rejects the write.
+    const { data: updated, error: updateErr } = await supabase
       .from("reports")
       .update({
         severity: score.severity,
@@ -241,7 +256,7 @@ export async function POST(request: Request) {
 
     if (updateErr || !updated) {
       console.error("update with AI score failed", updateErr);
-      scoreError = "update_failed";
+      scoreError = "ai_update_failed";
       // scored stays false → client gets the placeholder
     } else {
       scored = true;
@@ -259,9 +274,11 @@ export async function POST(request: Request) {
       };
     }
   } catch (err) {
-    // 10. OpenAI call failed — keep the placeholder, log, surface
+    // 10. OpenAI call failed — keep the placeholder, log server-side,
+    //     surface a static code to the client. Don't leak SDK error
+    //     details (model names, API key prefixes, request URLs).
     console.error("AI scoring failed", err);
-    scoreError = err instanceof Error ? err.message : "unknown";
+    scoreError = "ai_unavailable";
   }
 
   return NextResponse.json({

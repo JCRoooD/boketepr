@@ -170,3 +170,24 @@ Tests:
 - No offline-submit queue — v1 explicitly didn't promise this; the plan said "If a user submits with no internet, the form shows an error and they retry." If we ever add this, the SW would need to capture the POST in a `Background Sync` registration and replay it.
 - OG image is text-only (no photo). Satori (the OG renderer) is strict about absolute-positioned overlays and the only font it bundles doesn't ship the rare-codepoint glyphs we'd want for the photo overlay. The share page itself still shows the full photo; only the preview is typographic. If we want a photo in the preview, we'd need to either (a) bundle a custom font with the glyphs and write a more constrained layout, or (b) move to a static-rendered PNG pipeline (sharp + canvas) instead of Satori.
 - No `generateImageMetadata` for multiple images per report (Twitter prefers one large image; not a current need).
+
+## Security audit (2026-06-26)
+
+Full audit report + remediation plan: `C:\Users\juanc\.hermes\plans\2026-06-26_150000-boketepr-security-audit.md`.
+
+**Fixed in this batch** (commit hashes pending push): SEC-001 (critical — service-role bypass in POST /api/reports), SEC-002, SEC-003, SEC-004, SEC-006, SEC-013, SEC-014, SEC-016, SEC-017. Two migrations (0008, 0009) need to be run manually in the Supabase SQL Editor — they don't auto-apply because this repo uses ad-hoc migrations, not `supabase db push`.
+
+**Deferred:** SEC-005 (upload magic-byte validation), SEC-007/008 (rate limits beyond per-user), SEC-011/012 (avatar upload trust), SEC-009 (npm audit deps), SEC-015/018/019.
+
+**Key invariant after this batch:** the only paths that use the service-role key are `lib/supabase/service.ts` and `scripts/*.mjs` (operational). Every other server route runs under the anon key so RLS is enforced. `node scripts/check-secret-leaks.mjs` fails CI if a new file outside the allowlist starts referencing the key.
+
+## Migrations applied (for reference)
+- 0001 — initial schema + RLS policies
+- 0002 — profiles.updated_at
+- 0003 — reports.ai_scored_at
+- 0004 — reports.lat / reports.lng columns
+- 0005 — find_nearby_reports() RPC
+- 0006 — fixed find_nearby_reports RETURNS TABLE shadow
+- 0007 — reports.fixed_at
+- **0008 — hardened find_nearby_reports** (revoke anon grant, add bound checks). **Needs user to run.**
+- **0009 — restricted profiles_read_all** (require `auth.uid() IS NOT NULL`). **Needs user to run.**
