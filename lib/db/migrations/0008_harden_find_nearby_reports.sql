@@ -116,7 +116,19 @@ $$;
 -- visitors away from (PROTECTED_PREFIXES includes /submit). So the
 -- anonymous grant was unnecessary. Removing it stops anonymous
 -- PostGIS-query probing (SEC-010).
+--
+-- IMPORTANT (Postgres ACL gotcha): migration 0005/0006 explicitly
+-- granted EXECUTE to `anon` and `authenticated` — those are NAMED
+-- role grants, not implicit-public grants. `REVOKE FROM public`
+-- alone would only undo the implicit public pseudo-grant; the
+-- explicit grants to anon/authenticated survive it. So we must
+-- REVOKE FROM anon + REVOKE FROM authenticated explicitly, then
+-- re-GRANT only to authenticated. (See migration 0008b for the
+-- corrective that fixed the partial application of 0008.)
+-- =====================================================================
 revoke all on function public.find_nearby_reports(double precision, double precision, double precision, integer) from public;
+revoke execute on function public.find_nearby_reports(double precision, double precision, double precision, integer) from anon;
+revoke execute on function public.find_nearby_reports(double precision, double precision, double precision, integer) from authenticated;
 
 grant execute on function public.find_nearby_reports(double precision, double precision, double precision, integer)
   to authenticated;

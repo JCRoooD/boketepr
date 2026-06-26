@@ -40,6 +40,7 @@ const PATTERNS = [
 // outside this allow-list is flagged.
 const ALLOWLIST = new Set([
   "lib/supabase/service.ts",
+  "lib/env.ts", // required() takes the env var name as a string literal
   "AGENTS.md", // documents the env var name in the env-vars section
   "scripts/cleanup-e2e.mjs",
   "scripts/e2e-submit.mjs",
@@ -47,6 +48,8 @@ const ALLOWLIST = new Set([
   "scripts/test-profile.mjs",
   "scripts/test-fixed-pin.mjs",
   "scripts/test-nearby.mjs",
+  "scripts/verify-security-migrations.mjs",
+  "scripts/diag-migration-0008.mjs",
   "scripts/check-secret-leaks.mjs", // self-reference is fine
 ]);
 
