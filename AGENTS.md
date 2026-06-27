@@ -156,6 +156,7 @@ Tests:
 - Storage: 3 public buckets — `photos`, `thumbnails`, `avatars`
 - Realtime: enabled for `public.reports` (postgres_changes on INSERT + UPDATE)
 - DB schema: `public.reports` has `fixed_at timestamptz NULL` (migration 0007). Status='fixed' rows have it set; active rows have NULL.
+- DB state: **0 reports** in `public.reports` as of 2026-06-26 (the 3 test reports I submitted earlier this week were cleared via `node scripts/delete-all-reports.mjs` to give the public launch a clean map). User account preserved.
 - DB RPC: `public.find_nearby_reports(in_lat, in_lng, in_radius_m, in_max_results)` — added in migration 0005, param names fixed in migration 0006 (renamed to break Postgres RETURNS TABLE shadow), granted to `anon` + `authenticated`
 - LocalStorage pin cache: `boketepr:pins:v2` (was `:v1` before migration 0007; old caches discarded on first load)
 - PWA: `/manifest.webmanifest` returns valid JSON (verified locally with `curl`). `/sw.js` served at root scope. Install prompt surfaces on `/` after first paint via `components/pwa/InstallPrompt`. SW is registered production-only (dev mode skips it).
